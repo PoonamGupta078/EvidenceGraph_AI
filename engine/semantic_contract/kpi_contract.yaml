@@ -1,0 +1,106 @@
+kpis:
+  - id: revenue
+    label: Revenue
+    unit: USD
+    source: OMS
+    cadence: daily
+    materiality_threshold_pct: 5.0
+    direction: higher_is_better
+    personas:
+      - gm
+      - analyst
+
+  - id: order_cancellation_rate
+    label: Order Cancellation Rate
+    unit: percent
+    source: OMS
+    cadence: daily
+    materiality_threshold_pct: 2.0
+    direction: lower_is_better
+    personas:
+      - gm
+      - ops_lead
+      - analyst
+
+  - id: fulfillment_delay_rate
+    label: Fulfillment Delay Rate
+    unit: percent
+    source: logistics
+    cadence: daily
+    materiality_threshold_pct: 3.0
+    direction: lower_is_better
+    personas:
+      - ops_lead
+      - analyst
+
+  - id: support_ticket_volume
+    label: Support Ticket Volume
+    unit: count
+    source: support
+    cadence: daily
+    materiality_threshold_pct: 10.0
+    direction: lower_is_better
+    personas:
+      - ops_lead
+      - analyst
+
+  - id: warehouse_staffing_level
+    label: Warehouse Staffing Level
+    unit: percent_of_target
+    source: WMS
+    cadence: daily
+    materiality_threshold_pct: 8.0
+    direction: higher_is_better
+    personas:
+      - ops_lead
+      - analyst
+
+thresholds:
+  confidence:
+    act: 0.75
+    investigate: 0.45
+    abstain_below: 0.45
+
+  data_quality:
+    min_completeness: 0.80
+    max_gap_days: 5
+    min_history_days: 14
+
+  materiality:
+    stl_anomaly_z_score: 2.5
+    cusum_k: 0.5
+    cusum_h: 5.0
+
+edge_types:
+  - CAUSES
+  - CORRELATES_WITH
+  - CONTRADICTS
+  - COMPENSATES
+  - LAGS
+  - INDEPENDENT
+
+regions:
+  - id: region_a
+    label: "Region A — Pacific Northwest"
+    scenario: staffing_chain
+    verdict_expected: ACT
+
+  - id: region_b
+    label: "Region B — Southwest"
+    scenario: contradiction_promo
+    verdict_expected: INVESTIGATE
+
+  - id: region_c
+    label: "Region C — Northeast"
+    scenario: data_quality_abstain
+    verdict_expected: ABSTAIN
+
+  - id: region_d
+    label: "Region D — Midwest"
+    scenario: sparse_history
+    verdict_expected: ABSTAIN
+
+  - id: region_e
+    label: "Region E — Southeast"
+    scenario: multi_factor_pvm
+    verdict_expected: ACT

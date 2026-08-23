@@ -1,0 +1,48 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+venv/
+.venv/
+env/
+*.egg-info/
+dist/
+build/
+*.egg
+.eggs/
+*.so
+
+# Environment
+.env
+.env.local
+.env.*.local
+*.env
+
+# Data files (generated)
+engine/data/generated/
+engine/data/*.csv
+engine/data/*.parquet
+engine/feedback/feedback.db
+engine/telemetry/telemetry.db
+
+# Next.js
+frontend/.next/
+frontend/out/
+frontend/node_modules/
+frontend/npm-debug.log*
+frontend/yarn-debug.log*
+frontend/yarn-error.log*
+frontend/.pnpm-debug.log*
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*.DS_Store
+
+# Railway / Vercel
+.vercel/
+.railway/
