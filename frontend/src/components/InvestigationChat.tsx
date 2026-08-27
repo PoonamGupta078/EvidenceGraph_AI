@@ -109,9 +109,10 @@ export default function InvestigationChat({ investigationId, personaId, regionId
 
     try {
       const res = await api.chat(investigationId, trimmed, personaId, history);
+      const contentText = res.answer || res.reply || "No response text returned.";
       setMessages(prev => [
         ...prev.slice(0, -1), // remove placeholder
-        { role: "assistant", content: res.reply, model: res.model, llm_used: res.llm_used },
+        { role: "assistant", content: contentText, model: res.model, llm_used: res.llm_used },
       ]);
     } catch (err) {
       setMessages(prev => [

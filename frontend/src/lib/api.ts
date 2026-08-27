@@ -212,7 +212,19 @@ export const api = {
     persona_id: PersonaId,
     history: Array<{ role: "user" | "assistant"; content: string }> = []
   ) =>
-    fetchJSON<{ reply: string; llm_used: boolean; model: string | null; note?: string }>(
+    fetchJSON<{
+      answer: string;
+      reply: string;
+      region_id: string;
+      investigation_id: string;
+      persona: string;
+      sources: string[];
+      retrieval_method: string;
+      latency_ms: number;
+      llm_used: boolean;
+      model: string | null;
+      note?: string;
+    }>(
       `${ENGINE}/investigations/${investigation_id}/chat`,
       {
         method: "POST",

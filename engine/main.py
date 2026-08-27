@@ -499,7 +499,7 @@ def get_investigation(investigation_id: str, persona_id: str = Query(default="gm
 def investigation_chat(investigation_id: str, req: ChatRequest):
     """Answer a question about a completed investigation (investigation-aware chatbot)."""
     if investigation_id not in _investigations:
-        raise HTTPException(status_code=404, detail="Investigation not found.")
+        raise HTTPException(status_code=404, detail="Investigation not found. It may have expired.")
 
     # Apply RBAC before passing to the LLM — the chatbot never sees restricted data
     filtered = filter_for_persona(_investigations[investigation_id], req.persona_id)
@@ -512,7 +512,23 @@ def investigation_chat(investigation_id: str, req: ChatRequest):
         history=history,
         persona_id=req.persona_id,
     )
-    return result
+
+    answer_text = result.get("answer") or result.get("reply", "")
+
+    return {
+        "answer": answer_text,
+        "reply": answer_text,
+        "region_id": filtered.get("region_id"),
+        "investigation_id": investigation_id,
+        "persona": req.persona_id,
+        "sources": result.get("sources", []),
+        "retrieval_method": result.get("retrieval_method", "none"),
+        "latency_ms": result.get("latency_ms", 0.0),
+        "llm_used": result.get("llm_used", False),
+        "model": result.get("model"),
+        "note": result.get("note"),
+    }
+
 
 
 @app.post("/sandbox/simulate")
