@@ -557,7 +557,7 @@ Server-side RBAC, data-quality gating, confidence thresholds, LLM context ground
 
 ---
 
-## 18. Team & License
+## 18. Team 
 
-* **Team**: HerForge
+* **Team**: HerForge (Name:- Poonam Gupta)
 * **Competition**: Accenture Innovation Challenge 2026 · Round 2 · Track 3: BusinessIntelligence.ai
