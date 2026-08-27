@@ -40,7 +40,8 @@ EvidenceGraph AI is built using a modern decoupled full-stack architecture:
 
 ## ⚙️ Causal & Pipeline Architecture
 
-The backend pipeline executes sequentially when an investigation is run:
+The backend pipeline executes sequentially when an investigation is run. Below is the detailed architecture of the 11 sequential processing stages:
+
 ```mermaid
 graph TD
     A[Relational Enterprise Sources] --> B[Multi-Source Reconciliation]
@@ -55,6 +56,60 @@ graph TD
     J --> K[Action Engine Recommendations]
     K --> L[RBAC Response Filtering]
 ```
+
+### Detailed Pipeline Components
+
+#### 1. Multi-Source Reconciliation (`reconciliation.py`)
+* **Purpose**: Ingests raw transactional logs from five decoupled enterprise silos (OMS, WMS, Logistics, Support, Marketing).
+* **Process**: Joins datasets on shared transaction keys, matching order timestamps to customer ticket logs and shipping barcodes to establish a single source of truth (Reconciled Data Frame).
+
+#### 2. Calendar Reconciliation & Alignment (`calendar_reconciliation.py`)
+* **Purpose**: Standardizes timestamps across varying operational clocks (WMS local warehouse time vs. OMS global API transaction time).
+* **Process**: Computes offsets, removes timezone skew, and aligns rolling daily or hourly windows to ensure causal correlations are calculated on synchronized timelines.
+
+#### 3. Data Reality & Quality Check (`data_reality_check.py`)
+* **Purpose**: Evaluates data freshness and schema integrity.
+* **Process**: Compares maximum transaction dates against reference dates to compute fresh lags. Marks files as `FRESH` or `STALE`. If checks fail, the engine enters an `ABSTAIN` state to prevent feeding corrupted data downstream.
+
+#### 4. Materiality & Signal Analysis (`materiality.py`)
+* **Purpose**: Determines if there is a statistically significant anomaly worth investigating.
+* **Process**: Compares current KPI deviations (e.g. revenue drops or cancellation spikes) against historical standard deviations ($\sigma$). If the deviation exceeds the materiality threshold, the investigation proceeds.
+
+#### 5. Evidence Graph GNN Ranking (`evidence_graph.py`)
+* **Purpose**: Represents KPIs as nodes in a graph with causal relationships as edges.
+* **Process**: Constructs a network topology where edges are weighted by rolling correlation coefficients. A GNN model ranks the nodes, placing the highest central nodes at the top of the potential root cause list.
+
+#### 6. PVM Factor Decomposition (`pvm_decomposition.py`)
+* **Purpose**: Isolates commercial and seasonal impacts from operational errors.
+* **Process**: Decomposes revenue changes into three factors:
+  $$\Delta \text{Revenue} = \text{Price Component} + \text{Volume Component} + \text{Marketing Component} + \text{Seasonal Component}$$
+  This prevents the system from blaming warehouse staffing for a revenue drop that is actually driven by a seasonal index decline or a marketing budget cut.
+
+#### 7. Causal Chain & Route Selection (`root_cause.py`)
+* **Purpose**: Reconstructs the propagation path of the anomaly.
+* **Process**: Finds the shortest dependency path from the primary driver to the revenue node (e.g., `warehouse_staffing_level` $\rightarrow$ `fulfillment_delay_rate` $\rightarrow$ `order_cancellation_rate` $\rightarrow$ `revenue`).
+
+#### 8. Challenge Engine Validation (`challenge_engine.py`)
+* **Purpose**: Audits the findings for contradictory patterns.
+* **Process**: Cross-references indicators. For example, if fulfillment delays are high but customer support tickets report zero delivery complaints, the challenge engine flags a contradiction, lowering the confidence score and pushing the verdict to `INVESTIGATE`.
+
+#### 9. Confidence & Verdict Resolution (`confidence.py`)
+* **Purpose**: Recommends whether the enterprise should act immediately or run more audits.
+* **Process**: Calculates a composite confidence score ($C \in [0.0, 1.0]$) using weights on Data Quality, Signal Strength, Cross-Source Consistency, Evidence Depth, and Causal Chain Completeness.
+  * $C \ge \text{ACT\_THRESHOLD}$ ($0.68$) $\rightarrow$ **`ACT`**
+  * $C < \text{ACT\_THRESHOLD}$ but significant signal $\rightarrow$ **`INVESTIGATE`**
+  * Failure of data quality check $\rightarrow$ **`ABSTAIN`**
+
+#### 10. Action Engine Recommendations (`action_engine.py`)
+* **Purpose**: Prescribes remediation actions.
+* **Process**: Maps the resolved primary driver to specific playbook actions (e.g. "Trigger backup logistics carrier" or "Deploy warehouse shift incentives") and assigns an operational owner (e.g. Operations Director or Marketing VP).
+
+#### 11. RBAC Response Filtering (`rbac.py`)
+* **Purpose**: Filters the final payload based on the user's role before it leaves the server.
+* **Process**: Hides financial fields (like USD impacts or PVM charts) from the `ops_lead` persona while exposing full analytical details to the `analyst` and high-level summaries to the `gm`.
+
+---
+
 
 ---
 
