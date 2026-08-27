@@ -60,14 +60,14 @@ export default function ActionCard({ action, verdict }: Props) {
         background: `${verdictColor}08`,
       }}>
         <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
-          <span style={{ fontSize: "1.1rem", marginTop: 1 }}>{TYPE_ICONS[action.type] || "📋"}</span>
+          <span style={{ fontSize: "1.2rem", marginTop: 1 }}>{TYPE_ICONS[action.type] || "📋"}</span>
           <div style={{ flex: 1 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-              <span style={{ fontSize: "0.88rem", fontWeight: 700, color: "var(--text-primary)" }}>
+              <span style={{ fontSize: "1.05rem", fontWeight: 700, color: "var(--text-primary)" }}>
                 {action.title}
               </span>
               <span style={{
-                fontSize: "0.6rem", fontWeight: 800, padding: "2px 8px",
+                fontSize: "0.7rem", fontWeight: 800, padding: "3px 9px",
                 borderRadius: 4,
                 background: `${priorityColor}18`,
                 color: priorityColor,
@@ -79,7 +79,7 @@ export default function ActionCard({ action, verdict }: Props) {
               </span>
             </div>
             {action.action_id && (
-              <div style={{ fontSize: "0.62rem", fontFamily: "var(--font-mono)", color: "var(--text-muted)", marginTop: 4 }}>
+              <div style={{ fontSize: "0.72rem", fontFamily: "var(--font-mono)", color: "var(--text-muted)", marginTop: 4 }}>
                 {action.action_id}
               </div>
             )}
@@ -89,7 +89,7 @@ export default function ActionCard({ action, verdict }: Props) {
 
       {/* Body */}
       <div style={{ padding: "16px 20px", display: "flex", flexDirection: "column", gap: 14 }}>
-        <p style={{ fontSize: "0.82rem", color: "var(--text-secondary)", lineHeight: 1.7, margin: 0 }}>
+        <p style={{ fontSize: "0.95rem", color: "var(--text-secondary)", lineHeight: 1.7, margin: 0, fontWeight: 400 }}>
           {action.description}
         </p>
 
@@ -98,11 +98,11 @@ export default function ActionCard({ action, verdict }: Props) {
             padding: "10px 12px", background: "var(--bg-elevated)",
             borderRadius: 8, border: "1px solid var(--border-subtle)",
           }}>
-            <div style={{ fontSize: "0.6rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--text-muted)", marginBottom: 4 }}>
+            <div style={{ fontSize: "0.72rem", textTransform: "uppercase", color: "var(--text-muted)", fontWeight: 700, letterSpacing: "0.05em" }}>
               Owner
             </div>
-            <div style={{ fontSize: "0.8rem", fontWeight: 600, color: "var(--text-primary)" }}>
-              {action.owner?.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase())}
+            <div style={{ fontSize: "0.9rem", fontWeight: 700, color: "var(--text-primary)", marginTop: 2 }}>
+              {action.owner}
             </div>
           </div>
           {action.estimated_impact && (
@@ -110,10 +110,10 @@ export default function ActionCard({ action, verdict }: Props) {
               padding: "10px 12px", background: "var(--act-bg)",
               borderRadius: 8, border: "1px solid var(--act-border)",
             }}>
-              <div style={{ fontSize: "0.6rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--text-muted)", marginBottom: 4 }}>
+              <div style={{ fontSize: "0.72rem", textTransform: "uppercase", color: "var(--act)", fontWeight: 700, letterSpacing: "0.05em" }}>
                 Est. Impact
               </div>
-              <div style={{ fontSize: "0.8rem", fontWeight: 700, color: "var(--act)", fontFamily: "var(--font-mono)" }}>
+              <div style={{ fontSize: "0.9rem", fontWeight: 700, color: "var(--act)", marginTop: 2, fontFamily: "var(--font-mono)" }}>
                 {action.estimated_impact}
               </div>
             </div>
@@ -122,16 +122,13 @@ export default function ActionCard({ action, verdict }: Props) {
 
         {action.preconditions && action.preconditions.length > 0 && (
           <div>
-            <div style={{ fontSize: "0.6rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--text-muted)", marginBottom: 8 }}>
+            <div style={{ fontSize: "0.72rem", textTransform: "uppercase", color: "var(--text-muted)", fontWeight: 700, marginBottom: 6, letterSpacing: "0.05em" }}>
               Preconditions
             </div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
-              {action.preconditions.map((p, i) => (
-                <div key={i} style={{
-                  display: "flex", gap: 8, fontSize: "0.76rem", color: "var(--text-secondary)",
-                  padding: "4px 0",
-                }}>
-                  <span style={{ color: "var(--act)", fontWeight: 700, flexShrink: 0 }}>✓</span> {p}
+            <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+              {action.preconditions.map((p, idx) => (
+                <div key={idx} style={{ fontSize: "0.85rem", color: "var(--text-secondary)", display: "flex", alignItems: "flex-start", gap: 6 }}>
+                  <span style={{ color: "var(--act)", fontWeight: 700 }}>✓</span> {p}
                 </div>
               ))}
             </div>
@@ -140,16 +137,13 @@ export default function ActionCard({ action, verdict }: Props) {
 
         {action.risks && action.risks.length > 0 && (
           <div>
-            <div style={{ fontSize: "0.6rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--text-muted)", marginBottom: 8 }}>
+            <div style={{ fontSize: "0.72rem", textTransform: "uppercase", color: "var(--investigate)", fontWeight: 700, marginBottom: 6, letterSpacing: "0.05em" }}>
               Risks
             </div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
-              {action.risks.map((r, i) => (
-                <div key={i} style={{
-                  display: "flex", gap: 8, fontSize: "0.76rem", color: "var(--text-secondary)",
-                  padding: "4px 0",
-                }}>
-                  <span style={{ color: "var(--investigate)", fontWeight: 700, flexShrink: 0 }}>⚠</span> {r}
+            <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+              {action.risks.map((r, idx) => (
+                <div key={idx} style={{ fontSize: "0.85rem", color: "var(--text-secondary)", display: "flex", alignItems: "flex-start", gap: 6 }}>
+                  <span style={{ color: "var(--investigate)", fontWeight: 700 }}>⚠️</span> {r}
                 </div>
               ))}
             </div>

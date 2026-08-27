@@ -21,10 +21,10 @@
   --border-active: rgba(161, 0, 255, 0.5);
   --border-glow: rgba(161, 0, 255, 0.2);
 
-  /* Text — dark on white */
-  --text-primary: #111827;
-  --text-secondary: #4b5563;
-  --text-muted: #9ca3af;
+  /* Text — dark, sharp, high-contrast on white */
+  --text-primary: #0f172a;
+  --text-secondary: #1e293b;
+  --text-muted: #475569;
   --text-inverted: #ffffff;
 
   /* Accenture Brand */
@@ -74,11 +74,11 @@
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 ::selection { background: rgba(161, 0, 255, 0.2); color: white; }
 
-html { scroll-behavior: smooth; font-size: 13px; }
+html { scroll-behavior: smooth; font-size: 15px; }
 
 body {
   font-family: var(--font-sans);
-  font-size: 13px;
+  font-size: 15px;
   background-color: var(--bg-base);
   color: var(--text-primary);
   line-height: 1.55;
@@ -92,12 +92,12 @@ body {
 body::before { display: none; }
 body::after { display: none; }
 
-/* ── Typography (smaller, light-mode) ── */
-h1 { font-size: 1.5rem; font-weight: 800; letter-spacing: -0.02em; color: var(--text-primary); }
-h2 { font-size: 1.1rem; font-weight: 700; letter-spacing: -0.01em; color: var(--text-primary); }
-h3 { font-size: 0.92rem; font-weight: 700; color: var(--text-primary); }
-h4 { font-size: 0.62rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.09em; color: var(--text-muted); }
-p { color: var(--text-secondary); font-size: 0.82rem; }
+/* ── Typography (clear, readable, high-contrast) ── */
+h1 { font-size: 1.75rem; font-weight: 800; letter-spacing: -0.02em; color: var(--text-primary); }
+h2 { font-size: 1.3rem; font-weight: 700; letter-spacing: -0.01em; color: var(--text-primary); }
+h3 { font-size: 1.05rem; font-weight: 700; color: var(--text-primary); }
+h4 { font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-muted); }
+p { color: var(--text-secondary); font-size: 0.95rem; }
 .font-mono { font-family: var(--font-mono); }
 
 /* ── Layout ── */

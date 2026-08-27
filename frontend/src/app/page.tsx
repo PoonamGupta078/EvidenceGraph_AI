@@ -656,32 +656,11 @@ export default function Home() {
                 )}
               </div>
 
-              {/* ── Intervention Sandbox — hidden for PVM scenarios (no operational levers) ── */}
-              {investigation.verdict !== "ABSTAIN" && investigation.scenario !== "multi_factor_pvm" && (
+              {/* ── Intervention Sandbox — visible for all non-ABSTAIN investigations ── */}
+              {investigation.verdict !== "ABSTAIN" && (
                 <InterventionSandbox regionId={investigation.region_id}/>
               )}
-              {investigation.verdict !== "ABSTAIN" && investigation.scenario === "multi_factor_pvm" && (
-                <div style={{
-                  padding: "20px 24px",
-                  background: "var(--bg-card)",
-                  border: "1px solid var(--border)",
-                  borderRadius: "var(--radius-md)",
-                  display: "flex", alignItems: "center", gap: 12,
-                  fontSize: "0.82rem", color: "var(--text-secondary)",
-                  boxShadow: "var(--shadow-sm)",
-                }}>
-                  <span style={{ fontSize: "1.2rem" }}>🔒</span>
-                  <div>
-                    <div style={{ fontWeight: 700, color: "var(--text-primary)", marginBottom: 2, fontSize: "0.85rem" }}>
-                      Intervention Sandbox — Not Available
-                    </div>
-                    <div>
-                      This scenario involves PVM (Price–Volume–Mix) drivers. Operational levers (staffing, fulfillment rate)
-                      do not apply here. Adjust pricing or marketing strategy to recover revenue.
-                    </div>
-                  </div>
-                </div>
-              )}
+
 
               {/* ── Telemetry Footer ── */}
               {investigation.telemetry && (
