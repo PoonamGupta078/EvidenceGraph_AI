@@ -1,14 +1,21 @@
 """
 generate_synthetic.py
-Generates 90-day synthetic time-series data for all 5 regions/scenarios.
-Produces internally consistent causal chains baked into the data.
+Generates 90-day synthetic relational database tables for all regions/scenarios.
+Produces transactional OMS, logistics shipments, WMS logs, and support tickets.
+
+Tables generated in data/generated/:
+  - oms.csv: order-level transaction details
+  - logistics.csv: shipment-level transit logs
+  - wms.csv: daily warehouse staffing and capacity metrics
+  - support.csv: ticket-level customer issues
+  - marketing.csv: daily marketing spend per region
 
 Usage:
     python data/generate_synthetic.py
-Outputs CSV files to data/generated/
 """
 
 import os
+import uuid
 import numpy as np
 import pandas as pd
 from pathlib import Path
@@ -17,268 +24,542 @@ np.random.seed(42)
 OUT_DIR = Path(__file__).parent / "generated"
 OUT_DIR.mkdir(exist_ok=True)
 
+# ---------------------------------------------------------------------------
+# Setup Base Entity Pools
+# ---------------------------------------------------------------------------
+CUSTOMERS = [f"C{i:04d}" for i in range(1, 1500)]
+PRODUCTS = [f"P{i:03d}" for i in range(1, 200)]
+CARRIERS = ["CARRIER-01", "CARRIER-02", "CARRIER-03", "CARRIER-04"]
+
+REGION_WAREHOUSES = {
+    "region_a": "WH-A",
+    "region_b": "WH-B",
+    "region_c": "WH-C",
+    "region_d": "WH-D",
+    "region_e": "WH-E",
+}
 
 def date_range(days=90):
     return pd.date_range(end="2024-03-31", periods=days, freq="D")
 
+def generate_relational_data():
+    print("Generating synthetic relational enterprise world...")
 
-# ---------------------------------------------------------------------------
-# REGION A: Staffing → Delay → Support → Cancellation → Revenue chain (ACT)
-# ---------------------------------------------------------------------------
-def generate_region_a():
-    dates = date_range(90)
-    n = len(dates)
+    all_dates = date_range(90)
+    n_days = len(all_dates)
 
-    # Staffing drops at day 45 (shock event)
-    staffing = np.ones(n) * 95.0
-    staffing[45:] = 68.0  # 27-point drop
-    staffing += np.random.normal(0, 2, n)
+    # Output list buffers
+    oms_records = []
+    logistics_records = []
+    wms_records = []
+    support_records = []
+    marketing_records = []
 
-    # Fulfillment delay rate lags staffing by 2 days
-    delay = np.zeros(n)
-    for i in range(n):
-        staff_lag = staffing[max(0, i - 2)]
-        delay[i] = max(0, 8 + (95 - staff_lag) * 0.6 + np.random.normal(0, 1.5))
+    # Keep track of daily variables for regions to simulate causal chains
+    regions = ["region_a", "region_b", "region_c", "region_d", "region_e"]
+    
+    # Store daily variables to compute lags easily
+    daily_vars = {r: {
+        "staffing": np.zeros(n_days),
+        "delay_prob": np.zeros(n_days),
+        "ticket_prob": np.zeros(n_days),
+        "cancel_prob": np.zeros(n_days),
+    } for r in regions}
 
-    # Support tickets lag delay by 1 day
-    tickets = np.zeros(n)
-    for i in range(n):
-        delay_lag = delay[max(0, i - 1)]
-        tickets[i] = max(0, 50 + delay_lag * 3.2 + np.random.normal(0, 5))
+    # Pre-populate daily curves for operational regions (A, B, C, D, E)
+    for r in regions:
+        # Region D only has sparse history (last 11 days of the 90 day range)
+        start_idx = 79 if r == "region_d" else 0
 
-    # Cancellation rate lags tickets by 1 day
-    cancellation = np.zeros(n)
-    for i in range(n):
-        ticket_lag = tickets[max(0, i - 1)]
-        cancellation[i] = max(0, 2 + ticket_lag * 0.08 + np.random.normal(0, 0.5))
+        for d in range(start_idx, n_days):
+            # 1. Staffing Level
+            if r == "region_a":
+                staff = 95.0 if d < 45 else 68.0
+            elif r == "region_b":
+                staff = 93.0 if d < 45 else 66.0
+            elif r == "region_c":
+                staff = 90.0
+            elif r == "region_d":
+                staff = 85.0
+            else: # region_e
+                staff = 92.0
+            
+            staff_noise = np.random.normal(0, 1.5)
+            daily_vars[r]["staffing"][d] = max(50, min(100, staff + staff_noise))
 
-    # Revenue lags cancellation by 1 day
-    revenue = np.zeros(n)
-    baseline_revenue = 500_000
-    for i in range(n):
-        cancel_lag = cancellation[max(0, i - 1)]
-        revenue[i] = max(0, baseline_revenue * (1 - cancel_lag / 100) - cancel_lag * 800 + np.random.normal(0, 8000))
+            # 2. Logistics Delay Probability (lags staffing by 2 days)
+            staff_lag_idx = max(start_idx, d - 2)
+            staff_lag = daily_vars[r]["staffing"][staff_lag_idx]
+            
+            if r in ["region_a", "region_b"]:
+                base_delay = 0.08 + (95.0 - staff_lag) * 0.007
+            else:
+                base_delay = 0.09
+            
+            daily_vars[r]["delay_prob"][d] = max(0.02, min(0.85, base_delay + np.random.normal(0, 0.02)))
 
-    df = pd.DataFrame({
-        "date": dates,
-        "region": "region_a",
-        "warehouse_staffing_level": staffing.round(2),
-        "fulfillment_delay_rate": delay.round(2),
-        "support_ticket_volume": tickets.round(0).astype(int),
-        "order_cancellation_rate": cancellation.round(2),
-        "revenue": revenue.round(2),
-        "staffing_source": "WMS",
-        "logistics_source": "logistics",
-        "support_source": "support",
-        "oms_source": "OMS",
-    })
-    df.to_csv(OUT_DIR / "region_a.csv", index=False)
-    print(f"✓ Region A: {len(df)} rows → {OUT_DIR / 'region_a.csv'}")
-    return df
+            # 3. Support Ticket Probability (lags delay by 1 day)
+            delay_lag_idx = max(start_idx, d - 1)
+            delay_lag = daily_vars[r]["delay_prob"][delay_lag_idx]
+            
+            if r in ["region_a", "region_b"]:
+                ticket_p = 0.05 + delay_lag * 0.4
+            else:
+                ticket_p = 0.06
+            
+            daily_vars[r]["ticket_prob"][d] = max(0.02, min(0.9, ticket_p + np.random.normal(0, 0.02)))
+
+            # 4. Cancellation Probability (lags ticket by 1 day)
+            ticket_lag_idx = max(start_idx, d - 1)
+            ticket_lag = daily_vars[r]["ticket_prob"][ticket_lag_idx]
+            
+            if r in ["region_a", "region_b"]:
+                cancel_p = 0.02 + ticket_lag * 0.35
+            else:
+                cancel_p = 0.03
+            
+            daily_vars[r]["cancel_prob"][d] = max(0.01, min(0.6, cancel_p + np.random.normal(0, 0.01)))
+
+    # Order/Shipment ID counter
+    order_counter = 100000
+    shipment_counter = 500000
+    ticket_counter = 900000
+
+    # ---------------------------------------------------------------------------
+    # Day-by-Day Transaction Generator
+    # ---------------------------------------------------------------------------
+    for d_idx, date in enumerate(all_dates):
+        date_str = date.strftime("%Y-%m-%d")
+
+        for r in regions:
+            # Region D sparse check
+            if r == "region_d" and d_idx < 79:
+                continue
+
+            wh_id = REGION_WAREHOUSES[r]
+
+            # 1. Marketing campaign spend (Region E shock, Region B normal, etc.)
+            mkt_spend = 1000.0
+            if r == "region_e":
+                mkt_spend = 5000.0 if d_idx < 40 else 2000.0
+            elif r == "region_b":
+                mkt_spend = 2500.0  # slightly higher marketing baseline
+            
+            mkt_spend = max(0.0, mkt_spend + np.random.normal(0, 100))
+            
+            # 2. Determine Order Volume (Demand)
+            base_orders = 80
+            price = 450.0  # Base unit price
+            discount = 0.0
+            seasonal_index = 1.0
+
+            if r == "region_e":
+                # Price shock at Day 30 (+12% price -> -18% volume)
+                price = 500.0 if d_idx < 30 else 560.0
+                
+                # Marketing spend shock at Day 40 (5000 -> 2000, -60% spend -> -10% volume)
+                mkt_factor = 1.0 if d_idx < 40 else 0.9
+                
+                # Seasonal dip at Day 55–70 (seasonal factor 0.9 -> -10% volume)
+                if 55 <= d_idx <= 70:
+                    seasonal_index = 0.9
+                
+                price_pct = (price - 500.0) / 500.0
+                price_factor = 1.0 - 1.5 * price_pct  # -1.5 price elasticity
+                
+                # Apply multipliers to volume
+                vol_target = base_orders * price_factor * mkt_factor * seasonal_index
+                n_orders = int(np.random.poisson(vol_target))
+            else:
+                # Normal demand
+                n_orders = int(np.random.poisson(base_orders))
+                
+                # Region B promo discount after Day 47
+                if r == "region_b" and d_idx >= 47:
+                    discount = 0.15 # 15% promo discount
+
+            # Append to marketing records after variables are resolved
+            marketing_records.append({
+                "date": date_str,
+                "region_id": r,
+                "marketing_spend": round(mkt_spend, 2),
+                "seasonal_index": round(seasonal_index, 2),
+                "campaign_id": f"CAMP-{r.upper()}-{date.strftime('%y%m%d')}"
+            })
+
+            # Generate orders, shipments and support tickets
+            for _ in range(n_orders):
+                order_counter += 1
+                shipment_counter += 1
+                
+                order_id = f"ORD-{order_counter}"
+                shipment_id = f"SHP-{shipment_counter}"
+                cust_id = np.random.choice(CUSTOMERS)
+                prod_id = np.random.choice(PRODUCTS)
+                
+                qty = int(np.random.choice([1, 2, 3], p=[0.7, 0.2, 0.1]))
+                
+                # Cancellation logic
+                cancel_prob = daily_vars[r]["cancel_prob"][d_idx]
+                is_cancelled = np.random.random() < cancel_prob
+                
+                # Write OMS
+                oms_records.append({
+                    "order_id": order_id,
+                    "customer_id": cust_id,
+                    "product_id": prod_id,
+                    "region_id": r,
+                    "order_date": date_str,
+                    "quantity": qty,
+                    "unit_price": round(price, 2),
+                    "discount": round(discount * price * qty, 2),
+                    "refund": round(price * qty if is_cancelled else 0.0, 2),
+                    "cancelled": 1 if is_cancelled else 0,
+                })
+
+                # Write Logistics (unless region_c data drop applies)
+                # Region C data-drop scenario: drop shipments completely between days 30-50
+                is_region_c_drop = (r == "region_c" and 30 <= d_idx <= 50)
+                
+                if not is_region_c_drop:
+                    delay_prob = daily_vars[r]["delay_prob"][d_idx]
+                    is_delayed = np.random.random() < delay_prob
+                    
+                    promised_dt = date + pd.Timedelta(days=3)
+                    
+                    if is_delayed:
+                        actual_dt = promised_dt + pd.Timedelta(days=int(np.random.randint(1, 6)))
+                    else:
+                        actual_dt = promised_dt + pd.Timedelta(days=int(np.random.choice([-1, 0])))
+
+                    logistics_records.append({
+                        "shipment_id": shipment_id,
+                        "order_id": order_id,
+                        "warehouse_id": wh_id,
+                        "carrier_id": np.random.choice(CARRIERS),
+                        "promised_date": promised_dt.strftime("%Y-%m-%d"),
+                        "actual_delivery_date": actual_dt.strftime("%Y-%m-%d")
+                    })
+
+                # Write Support Tickets
+                ticket_prob = daily_vars[r]["ticket_prob"][d_idx]
+                if np.random.random() < ticket_prob:
+                    ticket_counter += 1
+                    t_id = f"TCK-{ticket_counter}"
+                    
+                    # Sentiment and Issue classification based on scenario
+                    sentiment = 0.5 + np.random.normal(0, 0.15)
+                    issue = "general_inquiry"
+                    
+                    if is_cancelled:
+                        issue = "cancellation"
+                        sentiment = 0.1 + np.random.normal(0, 0.08)
+                    elif not is_region_c_drop and is_delayed:
+                        issue = "delivery_delay"
+                        sentiment = 0.2 + np.random.normal(0, 0.1)
+                    elif r == "region_e" and d_idx >= 30:
+                        issue = "price_complaint"
+                        sentiment = 0.3 + np.random.normal(0, 0.12)
+                    elif r == "region_b" and d_idx >= 47:
+                        issue = "promo_inquiry"
+                        sentiment = 0.8 + np.random.normal(0, 0.05)
+
+                    support_records.append({
+                        "ticket_id": t_id,
+                        "order_id": order_id,
+                        "customer_id": cust_id,
+                        "region_id": r,
+                        "ticket_date": date_str,
+                        "issue_type": issue,
+                        "sentiment": round(max(0.0, min(1.0, sentiment)), 2)
+                    })
+
+            # 3. Warehouse WMS logs for the day (one per warehouse-product combination)
+            staff_level = daily_vars[r]["staffing"][d_idx]
+            stockout = 1 if (staff_level < 75.0 and np.random.random() < 0.15) else 0
+
+            # Sample WMS logs for top 5 active products in the warehouse to avoid massive file size
+            for prod in PRODUCTS[:25]:
+                wms_records.append({
+                    "warehouse_id": wh_id,
+                    "product_id": prod,
+                    "date": date_str,
+                    "inventory": int(np.random.randint(100, 2000) if not stockout else np.random.randint(0, 10)),
+                    "staffing": round(staff_level, 2),
+                    "capacity": 1000,
+                    "stockout": stockout
+                })
+
+    # Save all datasets to data/generated/
+    df_oms = pd.DataFrame(oms_records)
+    df_oms.to_csv(OUT_DIR / "oms.csv", index=False)
+    print(f"[OK] OMS: {len(df_oms)} orders saved to {OUT_DIR / 'oms.csv'}")
+
+    df_logistics = pd.DataFrame(logistics_records)
+    df_logistics.to_csv(OUT_DIR / "logistics.csv", index=False)
+    print(f"[OK] Logistics: {len(df_logistics)} shipments saved to {OUT_DIR / 'logistics.csv'}")
+
+    df_wms = pd.DataFrame(wms_records)
+    df_wms.to_csv(OUT_DIR / "wms.csv", index=False)
+    print(f"[OK] WMS: {len(df_wms)} staffing records saved to {OUT_DIR / 'wms.csv'}")
+
+    df_support = pd.DataFrame(support_records)
+    df_support.to_csv(OUT_DIR / "support.csv", index=False)
+    print(f"[OK] Support: {len(df_support)} tickets saved to {OUT_DIR / 'support.csv'}")
+
+    df_marketing = pd.DataFrame(marketing_records)
+    df_marketing.to_csv(OUT_DIR / "marketing.csv", index=False)
+    print(f"[OK] Marketing: {len(df_marketing)} records saved to {OUT_DIR / 'marketing.csv'}")
+
+    # Build RAG corpus directly from generated support records (for evidence lineage)
+    generate_rag_corpus_from_support(df_support, df_logistics)
+    # Generate metadata files
+    generate_source_metadata()
+    generate_scenario_metadata()
 
 
-# ---------------------------------------------------------------------------
-# REGION B: Same delay pattern BUT compensating promo — INVESTIGATE (contradiction)
-# ---------------------------------------------------------------------------
-def generate_region_b():
-    dates = date_range(90)
-    n = len(dates)
-
-    # Same staffing drop
-    staffing = np.ones(n) * 93.0
-    staffing[45:] = 66.0
-    staffing += np.random.normal(0, 2, n)
-
-    # Same delay chain
-    delay = np.zeros(n)
-    for i in range(n):
-        staff_lag = staffing[max(0, i - 2)]
-        delay[i] = max(0, 8 + (93 - staff_lag) * 0.6 + np.random.normal(0, 1.5))
-
-    tickets = np.zeros(n)
-    for i in range(n):
-        delay_lag = delay[max(0, i - 1)]
-        tickets[i] = max(0, 48 + delay_lag * 3.0 + np.random.normal(0, 5))
-
-    cancellation = np.zeros(n)
-    for i in range(n):
-        ticket_lag = tickets[max(0, i - 1)]
-        cancellation[i] = max(0, 2 + ticket_lag * 0.075 + np.random.normal(0, 0.5))
-
-    # PROMO kicks in at day 47 — compensates revenue (this is the contradiction)
-    promo_discount = np.zeros(n)
-    promo_discount[47:] = 15.0  # 15% promo
-
-    revenue = np.zeros(n)
-    baseline_revenue = 480_000
-    for i in range(n):
-        cancel_lag = cancellation[max(0, i - 1)]
-        promo_boost = promo_discount[i] * 1200  # promo drives volume despite cancellations
-        revenue[i] = max(0, baseline_revenue * (1 - cancel_lag / 200) + promo_boost + np.random.normal(0, 9000))
-
-    df = pd.DataFrame({
-        "date": dates,
-        "region": "region_b",
-        "warehouse_staffing_level": staffing.round(2),
-        "fulfillment_delay_rate": delay.round(2),
-        "support_ticket_volume": tickets.round(0).astype(int),
-        "order_cancellation_rate": cancellation.round(2),
-        "revenue": revenue.round(2),
-        "promo_discount_pct": promo_discount.round(2),
-        "staffing_source": "WMS",
-        "logistics_source": "logistics",
-        "support_source": "support",
-        "oms_source": "OMS",
-    })
-    df.to_csv(OUT_DIR / "region_b.csv", index=False)
-    print(f"✓ Region B: {len(df)} rows → {OUT_DIR / 'region_b.csv'}")
-    return df
+# ─── ISSUE TEXT TEMPLATES (populated from generated ticket fields) ──────────
+ISSUE_TEXT_TEMPLATES = {
+    "delivery_delay": [
+        "Customer {cid} reported order {oid} delayed significantly — {days}+ days past promised delivery.",
+        "Delivery for order {oid} is overdue. Customer {cid} flagged missing shipment.",
+        "Order {oid} stuck in processing. Warehouse capacity likely insufficient.",
+    ],
+    "cancellation": [
+        "Customer {cid} cancelled order {oid} after extended wait for fulfillment.",
+        "Order {oid} cancelled by {cid} due to unacceptable delivery delays.",
+        "Cancellation received for {oid}. Customer cited repeated delays.",
+    ],
+    "price_complaint": [
+        "Customer {cid} complained about recent price increase on order {oid}.",
+        "Order {oid} query: customer {cid} finds new pricing uncompetitive.",
+        "Price sensitivity flagged by {cid} — reduced order size on {oid}.",
+    ],
+    "promo_inquiry": [
+        "Customer {cid} inquired about active discount code for order {oid}.",
+        "Promo code applied to {oid} by customer {cid}. Positive feedback.",
+        "Order {oid}: customer {cid} satisfied with discount offer.",
+    ],
+    "general_inquiry": [
+        "Customer {cid} submitted general query regarding order {oid}.",
+        "Order {oid} status check by customer {cid}.",
+    ],
+}
 
 
-# ---------------------------------------------------------------------------
-# REGION C: Data-quality ABSTAIN — corrupted logistics window
-# ---------------------------------------------------------------------------
-def generate_region_c():
-    dates = date_range(90)
-    n = len(dates)
+def generate_rag_corpus_from_support(df_support: pd.DataFrame, df_logistics: pd.DataFrame):
+    """
+    Builds support_tickets.csv (the RAG retrieval corpus) directly from
+    the generated support.csv records. Every corpus document is traceable
+    back to a real generated support ticket via ticket_id and order_id.
+    """
+    corpus_records = []
+    logistics_lookup = df_logistics.set_index("order_id") if "order_id" in df_logistics.columns else None
 
-    staffing = np.ones(n) * 90.0 + np.random.normal(0, 2, n)
+    for _, row in df_support.iterrows():
+        issue = row.get("issue_type", "general_inquiry")
+        templates = ISSUE_TEXT_TEMPLATES.get(issue, ISSUE_TEXT_TEMPLATES["general_inquiry"])
+        
+        template_idx = sum(ord(c) for c in str(row["ticket_id"])) % len(templates)
+        template = templates[template_idx]
+        
+        days_late = 0
+        if "delay" in issue and logistics_lookup is not None:
+            order_id = row["order_id"]
+            if order_id in logistics_lookup.index:
+                log_row = logistics_lookup.loc[order_id]
+                if isinstance(log_row, pd.DataFrame):
+                    log_row = log_row.iloc[0]
+                try:
+                    actual = pd.to_datetime(log_row.get("actual_delivery_date"))
+                    promised = pd.to_datetime(log_row.get("promised_date"))
+                    if pd.notna(actual) and pd.notna(promised):
+                        days_late = max(0, (actual - promised).days)
+                except Exception:
+                    pass
+        if days_late == 0 and "delay" in issue:
+            days_late = 5  # fallback
+            
+        text = template.format(
+            cid=row["customer_id"],
+            oid=row["order_id"],
+            days=days_late,
+        )
+        corpus_records.append({
+            # Traceability fields — link directly to support.csv and oms.csv
+            "id": row["ticket_id"],
+            "source": "SUPPORT",
+            "source_id": row["ticket_id"],
+            "order_id": row["order_id"],
+            "region": row.get("region_id", ""),
+            "date": row["ticket_date"],
+            "text": text,
+            "category": issue,
+            "sentiment": row.get("sentiment", 0.5),
+        })
 
-    # Deliberately corrupt logistics data days 30–50 (NaN injection)
-    delay = 10.0 + np.random.normal(0, 1.5, n)
-    delay[30:51] = np.nan  # 21-day gap in logistics source
-
-    tickets = 60 + np.random.normal(0, 5, n)
-    cancellation = 3.0 + np.random.normal(0, 0.4, n)
-    revenue = 490_000 + np.random.normal(0, 10000, n)
-
-    df = pd.DataFrame({
-        "date": dates,
-        "region": "region_c",
-        "warehouse_staffing_level": staffing.round(2),
-        "fulfillment_delay_rate": delay.round(2),  # has NaNs
-        "support_ticket_volume": tickets.round(0).astype(int),
-        "order_cancellation_rate": cancellation.round(2),
-        "revenue": revenue.round(2),
-        "data_quality_flag": ["CORRUPT" if 30 <= i <= 50 else "OK" for i in range(n)],
-    })
-    df.to_csv(OUT_DIR / "region_c.csv", index=False)
-    print(f"✓ Region C: {len(df)} rows → {OUT_DIR / 'region_c.csv'}")
-    return df
-
-
-# ---------------------------------------------------------------------------
-# REGION D: Sparse history ABSTAIN — only 11 days of data
-# ---------------------------------------------------------------------------
-def generate_region_d():
-    dates = date_range(11)  # Only 11 days — below 14-day minimum
-    n = len(dates)
-
-    staffing = 85.0 + np.random.normal(0, 3, n)
-    delay = 12.0 + np.random.normal(0, 2, n)
-    tickets = 55 + np.random.normal(0, 8, n)
-    cancellation = 3.5 + np.random.normal(0, 0.6, n)
-    revenue = 460_000 + np.random.normal(0, 12000, n)
-
-    df = pd.DataFrame({
-        "date": dates,
-        "region": "region_d",
-        "warehouse_staffing_level": staffing.round(2),
-        "fulfillment_delay_rate": delay.round(2),
-        "support_ticket_volume": tickets.round(0).astype(int),
-        "order_cancellation_rate": cancellation.round(2),
-        "revenue": revenue.round(2),
-    })
-    df.to_csv(OUT_DIR / "region_d.csv", index=False)
-    print(f"✓ Region D: {len(df)} rows (sparse) → {OUT_DIR / 'region_d.csv'}")
-    return df
+    df_corpus = pd.DataFrame(corpus_records)
+    df_corpus.to_csv(OUT_DIR / "support_tickets.csv", index=False)
+    print(f"[OK] RAG corpus (traced): {len(df_corpus)} records -> {OUT_DIR / 'support_tickets.csv'}")
 
 
-# ---------------------------------------------------------------------------
-# REGION E: Multi-factor PVM — price + marketing + seasonal independent drivers (ACT)
-# ---------------------------------------------------------------------------
-def generate_region_e():
-    dates = date_range(90)
-    n = len(dates)
-
-    # Healthy operations — staffing, delays, tickets all normal
-    staffing = 92.0 + np.random.normal(0, 2, n)
-    delay = 9.0 + np.random.normal(0, 1.2, n)
-    tickets = 52 + np.random.normal(0, 4, n)
-    cancellation = 2.5 + np.random.normal(0, 0.3, n)
-
-    # Revenue drop driven by 3 INDEPENDENT factors:
-    # 1. Price increase at day 30 (+12% price → -8% volume)
-    price_effect = np.zeros(n)
-    price_effect[30:] = -38_000  # revenue loss from elasticity
-
-    # 2. Marketing spend cut at day 40 (no promo)
-    marketing_effect = np.zeros(n)
-    marketing_effect[40:] = -22_000
-
-    # 3. Seasonal dip (natural Q1 trough at days 55–70)
-    seasonal_effect = np.zeros(n)
-    seasonal_effect[55:71] = -15_000
-
-    baseline_revenue = 510_000
-    revenue = np.zeros(n)
-    for i in range(n):
-        revenue[i] = (baseline_revenue
-                      + price_effect[i]
-                      + marketing_effect[i]
-                      + seasonal_effect[i]
-                      + np.random.normal(0, 7000))
-
-    df = pd.DataFrame({
-        "date": dates,
-        "region": "region_e",
-        "warehouse_staffing_level": staffing.round(2),
-        "fulfillment_delay_rate": delay.round(2),
-        "support_ticket_volume": tickets.round(0).astype(int),
-        "order_cancellation_rate": cancellation.round(2),
-        "revenue": revenue.round(2),
-        "price_effect_usd": price_effect.round(2),
-        "marketing_effect_usd": marketing_effect.round(2),
-        "seasonal_effect_usd": seasonal_effect.round(2),
-    })
-    df.to_csv(OUT_DIR / "region_e.csv", index=False)
-    print(f"✓ Region E: {len(df)} rows → {OUT_DIR / 'region_e.csv'}")
-    return df
-
-
-# ---------------------------------------------------------------------------
-# Synthetic support tickets corpus (for RAG)
-# ---------------------------------------------------------------------------
-def generate_support_tickets():
-    tickets = [
-        {"id": "T001", "region": "region_a", "date": "2024-02-20", "text": "My order has been delayed for 5 days with no update. Extremely frustrated.", "category": "delivery_delay"},
-        {"id": "T002", "region": "region_a", "date": "2024-02-21", "text": "Package showing as processing for a week, warehouse says understaffed.", "category": "delivery_delay"},
-        {"id": "T003", "region": "region_a", "date": "2024-02-22", "text": "Cancelled my order after waiting 8 days. First time I've had to do this.", "category": "cancellation"},
-        {"id": "T004", "region": "region_a", "date": "2024-02-23", "text": "Agent told me there are staffing issues at the fulfillment center. Unacceptable.", "category": "delivery_delay"},
-        {"id": "T005", "region": "region_a", "date": "2024-02-24", "text": "Three orders cancelled this month due to delays. Switching to competitor.", "category": "cancellation"},
-        {"id": "T006", "region": "region_b", "date": "2024-02-20", "text": "Got a 15% promo code today, applying it right away!", "category": "promo"},
-        {"id": "T007", "region": "region_b", "date": "2024-02-21", "text": "Delay was frustrating but the promo made up for it somewhat.", "category": "mixed"},
-        {"id": "T008", "region": "region_b", "date": "2024-02-22", "text": "Happy with the discount but wish delivery was faster.", "category": "mixed"},
-        {"id": "T009", "region": "region_c", "date": "2024-02-15", "text": "No tracking updates for 10 days. Logistics system seems broken.", "category": "data_issue"},
-        {"id": "T010", "region": "region_e", "date": "2024-02-20", "text": "Prices went up a lot this month. Had to reduce my order size.", "category": "price"},
-        {"id": "T011", "region": "region_e", "date": "2024-02-25", "text": "Used to get promo emails, haven't received anything in weeks.", "category": "marketing"},
-        {"id": "T012", "region": "region_e", "date": "2024-03-01", "text": "Post-holiday spending is always lower. Normal for this time of year.", "category": "seasonal"},
-        {"id": "T013", "region": "region_a", "date": "2024-02-25", "text": "Warehouse in area reportedly had worker shortage last month.", "category": "delivery_delay"},
-        {"id": "T014", "region": "region_a", "date": "2024-02-26", "text": "5 of my 7 recent orders had delays exceeding 3 days.", "category": "delivery_delay"},
-        {"id": "T015", "region": "region_b", "date": "2024-02-23", "text": "Despite delays, kept my order because of the great discount.", "category": "promo"},
+def generate_source_metadata():
+    """
+    Produces source_metadata.csv: formal registration of each enterprise source.
+    The data_reality_check engine reads this to evaluate freshness and cadence.
+    This is NOT ground truth — it describes source structure, not scenario outcomes.
+    """
+    import json
+    # Simulate last refresh at end of the synthetic period
+    LAST_REFRESH_BASE = "2024-03-31"
+    sources = [
+        {
+            "source": "OMS",
+            "table": "oms.csv",
+            "grain": "order",
+            "refresh_frequency": "daily",
+            "last_refresh": f"{LAST_REFRESH_BASE}T23:00:00Z",
+            "expected_lag_hours": 1,
+            "status": "FRESH",
+            "primary_key": "order_id",
+            "join_keys": "order_id",
+            "owner": "Commerce Platform",
+        },
+        {
+            "source": "TMS",
+            "table": "logistics.csv",
+            "grain": "shipment",
+            "refresh_frequency": "15min",
+            "last_refresh": f"{LAST_REFRESH_BASE}T23:45:00Z",
+            "expected_lag_hours": 0.25,
+            "status": "FRESH",
+            "primary_key": "shipment_id",
+            "join_keys": "order_id, warehouse_id",
+            "owner": "Logistics Platform",
+        },
+        {
+            "source": "WMS",
+            "table": "wms.csv",
+            "grain": "warehouse_product_day",
+            "refresh_frequency": "daily",
+            "last_refresh": f"{LAST_REFRESH_BASE}T06:00:00Z",
+            "expected_lag_hours": 18,
+            "status": "STALE",
+            "primary_key": "warehouse_id+product_id+date",
+            "join_keys": "warehouse_id",
+            "owner": "Warehouse Operations",
+        },
+        {
+            "source": "Support",
+            "table": "support.csv",
+            "grain": "ticket",
+            "refresh_frequency": "realtime",
+            "last_refresh": f"{LAST_REFRESH_BASE}T23:58:00Z",
+            "expected_lag_hours": 0,
+            "status": "FRESH",
+            "primary_key": "ticket_id",
+            "join_keys": "order_id, customer_id",
+            "owner": "Customer Experience",
+        },
+        {
+            "source": "Marketing",
+            "table": "marketing.csv",
+            "grain": "region_day",
+            "refresh_frequency": "daily",
+            "last_refresh": f"{LAST_REFRESH_BASE}T18:00:00Z",
+            "expected_lag_hours": 6,
+            "status": "FRESH",
+            "primary_key": "campaign_id",
+            "join_keys": "region_id, date",
+            "owner": "Growth & Marketing",
+        },
     ]
-    df = pd.DataFrame(tickets)
-    df.to_csv(OUT_DIR / "support_tickets.csv", index=False)
-    print(f"✓ Support tickets corpus: {len(df)} rows → {OUT_DIR / 'support_tickets.csv'}")
-    return df
+    df_meta = pd.DataFrame(sources)
+    df_meta.to_csv(OUT_DIR / "source_metadata.csv", index=False)
+    print(f"[OK] Source metadata: {len(df_meta)} sources -> {OUT_DIR / 'source_metadata.csv'}")
+
+
+def generate_scenario_metadata():
+    """
+    Produces scenario_metadata.json: formal record of ground truth per region.
+
+    IMPORTANT: This file is used ONLY by:
+      - evaluate.py (test harness)
+      - Demo scenario selector (UI)
+    It is NEVER loaded by the intelligence pipeline (main.py, reconciliation, confidence gate).
+    The pipeline must independently discover the verdict from raw source data.
+    """
+    import json
+    metadata = {
+        "region_a": {
+            "scenario": "operational_disruption",
+            "label": "Staffing Chain — Pacific NW",
+            "description": "Warehouse staffing dropped 28% at Day 45, triggering a causal chain through delivery delays, support tickets, and cancellations to revenue loss.",
+            "primary_driver": "warehouse_staffing_level",
+            "causal_chain": [
+                "warehouse_staffing_level",
+                "fulfillment_delay_rate",
+                "support_ticket_volume",
+                "order_cancellation_rate",
+                "revenue"
+            ],
+            "shock_day": 45,
+            "expected_verdict": "ACT",
+            "demo_use": True,
+        },
+        "region_b": {
+            "scenario": "contradictory_evidence",
+            "label": "Promo Compensation — Southwest",
+            "description": "Same operational failure as Region A, but a 15% promotional discount launched at Day 47 compensated revenue, creating contradictory signals.",
+            "primary_driver": "fulfillment_delay_rate",
+            "compensating_factor": "promo_discount",
+            "shock_day": 45,
+            "promo_day": 47,
+            "expected_verdict": "INVESTIGATE",
+            "demo_use": True,
+        },
+        "region_c": {
+            "scenario": "data_quality_failure",
+            "label": "TMS Outage — Northeast",
+            "description": "Logistics (TMS) records are absent for Days 30-50 (21-day gap). The engine cannot reconcile shipment completeness and must abstain.",
+            "missing_source": "TMS",
+            "gap_start_day": 30,
+            "gap_end_day": 50,
+            "expected_verdict": "ABSTAIN",
+            "abstain_reason": "logistics source completeness 77%",
+            "demo_use": True,
+        },
+        "region_d": {
+            "scenario": "sparse_history",
+            "label": "Newly Launched Market — Midwest",
+            "description": "Region D is a newly launched market with only 11 days of transaction history, below the 14-day minimum required for statistical confidence.",
+            "history_days": 11,
+            "minimum_required_days": 14,
+            "expected_verdict": "ABSTAIN",
+            "abstain_reason": "insufficient history",
+            "demo_use": True,
+        },
+        "region_e": {
+            "scenario": "multi_factor_pvm",
+            "label": "Price + Marketing + Seasonality — Southeast",
+            "description": "Revenue decline driven by three distinct economic factors: price elasticity (Day 30), marketing spend cut (Day 40), and seasonal dip (Days 55-70). Operational KPIs remain healthy.",
+            "primary_driver": "unit_price",
+            "distinct_factors": ["unit_price", "marketing_spend", "seasonal_index"],
+            "price_shock_day": 30,
+            "marketing_cut_day": 40,
+            "seasonal_dip_start": 55,
+            "seasonal_dip_end": 70,
+            "expected_verdict": "ACT",
+            "demo_use": True,
+        },
+    }
+    out_path = OUT_DIR / "scenario_metadata.json"
+    with open(out_path, "w") as f:
+        json.dump(metadata, f, indent=2)
+    print(f"[OK] Scenario metadata (evaluation-only): {len(metadata)} regions -> {out_path}")
+    print("     NOTE: scenario_metadata.json is for evaluate.py / demo only. NEVER loaded by the pipeline.")
 
 
 if __name__ == "__main__":
-    print("Generating synthetic data for all 5 regions...\n")
-    generate_region_a()
-    generate_region_b()
-    generate_region_c()
-    generate_region_d()
-    generate_region_e()
-    generate_support_tickets()
-    print("\n✅ All synthetic data generated successfully.")
+    generate_relational_data()
+    print("\n[SUCCESS] Relational synthetic database generated successfully.")

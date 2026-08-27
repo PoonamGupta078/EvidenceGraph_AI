@@ -48,6 +48,7 @@ from pipeline.rbac import filter_for_persona, get_personas
 from pipeline.intervention_sandbox import simulate_intervention, get_lever_options
 from rag.retriever import retrieve_evidence
 from llm.narrator import generate_narrative
+from llm.chatbot import chat_with_investigation
 from feedback.store import store_feedback, get_feedback_stats, get_feedback_for_investigation
 from telemetry.tracker import record_telemetry, get_telemetry, get_aggregate_telemetry, TelemetryTimer
 
@@ -70,15 +71,15 @@ _investigations: Dict[str, Dict] = {}
 async def lifespan(app: FastAPI):
     """Pre-warm: check data files exist."""
     missing = []
-    for region in REGION_SCENARIOS:
-        path = DATA_DIR / f"{region}.csv"
+    for src in ["oms", "logistics", "wms", "support", "marketing"]:
+        path = DATA_DIR / f"{src}.csv"
         if not path.exists():
             missing.append(str(path))
     if missing:
-        print(f"⚠️  Missing data files: {missing}")
+        print(f"[WARNING] Missing data files: {missing}")
         print("   Run: python data/generate_synthetic.py")
     else:
-        print(f"✅ All {len(REGION_SCENARIOS)} region data files found.")
+        print("[OK] All relational enterprise source data files found.")
     yield
 
 
@@ -89,8 +90,12 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# CORS — allow frontend origins
-cors_origins = os.getenv("CORS_ORIGINS", "http://localhost:3000").split(",")
+# ── CORS: allow Next.js frontend to call the backend ─────────────────────────
+# Origins can be overridden via CORS_ORIGINS env var (comma-separated).
+cors_origins = os.getenv(
+    "CORS_ORIGINS",
+    "http://localhost:3000,http://127.0.0.1:3000,http://localhost:3001",
+).split(",")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=cors_origins,
@@ -124,25 +129,53 @@ class FeedbackRequest(BaseModel):
     rating: str = "correct"
     comment: Optional[str] = None
 
+class ChatMessage(BaseModel):
+    role: str          # "user" | "assistant"
+    content: str
+
+class ChatRequest(BaseModel):
+    message: str
+    persona_id: str = "gm"
+    history: List[ChatMessage] = []
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Helpers
 # ─────────────────────────────────────────────────────────────────────────────
 
-def _load_region_data(region_id: str) -> pd.DataFrame:
-    path = DATA_DIR / f"{region_id}.csv"
-    if not path.exists():
-        raise HTTPException(
-            status_code=404,
-            detail=f"Data file for '{region_id}' not found. Run: python data/generate_synthetic.py",
-        )
-    return pd.read_csv(path, parse_dates=["date"])
+def _load_enterprise_sources() -> Dict[str, pd.DataFrame]:
+    sources = ["oms", "logistics", "wms", "support", "marketing"]
+    dfs = {}
+    for src in sources:
+        path = DATA_DIR / f"{src}.csv"
+        if not path.exists():
+            raise HTTPException(
+                status_code=404,
+                detail=f"Enterprise source file '{src}.csv' not found. Run: python data/generate_synthetic.py",
+            )
+        dfs[src] = pd.read_csv(path)
+    return dfs
 
 
-def _kpi_health_strip(df: pd.DataFrame, materiality_result: Dict) -> Dict[str, Any]:
+def _kpi_health_strip(df: pd.DataFrame, materiality_result: Dict, scenario: Optional[str] = None) -> Dict[str, Any]:
     """Builds the KPI health strip for the frontend."""
-    kpis = ["revenue", "order_cancellation_rate", "fulfillment_delay_rate",
-            "support_ticket_volume", "warehouse_staffing_level"]
+    base_kpis = [
+        "revenue",
+        "order_cancellation_rate",
+        "fulfillment_delay_rate",
+        "support_ticket_volume",
+        "warehouse_staffing_level",
+    ]
+    pvm_kpis = [
+        "unit_price",
+        "marketing_spend",
+        "seasonal_index",
+    ]
+    kpis = (
+        base_kpis + pvm_kpis
+        if scenario == "multi_factor_pvm"
+        else base_kpis
+    )
     strip = {}
     for kpi in kpis:
         if kpi not in df.columns:
@@ -191,13 +224,24 @@ def kpi_overview():
     Used by the frontend's main overview screen.
     """
     results = {}
+    try:
+        sources = _load_enterprise_sources()
+    except Exception as e:
+        return {"error": f"Failed to load sources: {e}"}
+
     for region_id in REGION_SCENARIOS:
         try:
-            df = _load_region_data(region_id)
-            reconciled = reconcile_sources(df)
+            reconciled = reconcile_sources(
+                oms_df=sources["oms"],
+                logistics_df=sources["logistics"],
+                wms_df=sources["wms"],
+                support_df=sources["support"],
+                marketing_df=sources["marketing"],
+                region_id=region_id,
+            )
             aligned_df = reconciled["aligned_df"]
             materiality = detect_materiality(aligned_df)
-            strip = _kpi_health_strip(aligned_df, materiality)
+            strip = _kpi_health_strip(aligned_df, materiality, scenario=REGION_SCENARIOS.get(region_id))
             results[region_id] = {
                 "label": region_id.replace("_", " ").title(),
                 "scenario": REGION_SCENARIOS[region_id],
@@ -228,11 +272,16 @@ def run_investigation(req: InvestigationRequest):
         raise HTTPException(status_code=400, detail=f"Unknown region: {region_id}. Valid: {list(REGION_SCENARIOS.keys())}")
 
     with timer.stage("pipeline"):
-        # 1. Load data
-        df = _load_region_data(region_id)
-
-        # 2. Reconcile sources
-        reconciled = reconcile_sources(df)
+        # 1. Load data & Reconcile sources
+        sources = _load_enterprise_sources()
+        reconciled = reconcile_sources(
+            oms_df=sources["oms"],
+            logistics_df=sources["logistics"],
+            wms_df=sources["wms"],
+            support_df=sources["support"],
+            marketing_df=sources["marketing"],
+            region_id=region_id,
+        )
         aligned_df = reconciled["aligned_df"]
 
         # 3. Data reality check
@@ -277,18 +326,18 @@ def run_investigation(req: InvestigationRequest):
         materiality = detect_materiality(aligned_df)
 
         # 6. KPI health strip
-        kpi_health = _kpi_health_strip(aligned_df, materiality)
+        kpi_health = _kpi_health_strip(aligned_df, materiality, scenario=scenario)
 
-        # 7. Evidence graph
-        evidence_graph = build_evidence_graph(aligned_df, materiality["material_kpis"], region_id, scenario)
-
-        # 8. Root cause ranking
-        root_cause = rank_root_causes(aligned_df, evidence_graph["driver_ranking"], materiality["material_kpis"], scenario)
-
-        # 9. PVM decomposition (for Region E or any revenue-material case)
+        # 7. PVM decomposition (for Region E or any revenue-material case)
         pvm = None
         if scenario == "multi_factor_pvm" or "revenue" in materiality["material_kpis"]:
             pvm = decompose_pvm(aligned_df)
+
+        # 8. Evidence graph (injects PVM nodes if pvm is available)
+        evidence_graph = build_evidence_graph(aligned_df, materiality["material_kpis"], region_id, scenario, pvm_result=pvm)
+
+        # 9. Root cause ranking
+        root_cause = rank_root_causes(aligned_df, evidence_graph["driver_ranking"], materiality["material_kpis"], scenario, pvm_result=pvm)
 
         # 10. Calendar check
         anomaly_indices = [
@@ -310,9 +359,22 @@ def run_investigation(req: InvestigationRequest):
         )
 
         # 12. Challenge engine
-        comparison_regions = [
-            {"region_id": "region_b", "verdict": "INVESTIGATE", "primary_cause_kpi": "warehouse_staffing_level"}
-        ] if region_id == "region_a" else []
+        # Build comparison_regions dynamically from already-cached investigations.
+        # This avoids a recursive full pipeline call and never fabricates causes.
+        comparison_regions = []
+        for other_rid, cached_inv in _investigations.items():
+            if not isinstance(cached_inv, dict):
+                continue
+            if cached_inv.get("region_id") == region_id:
+                continue
+            cached_verdict = cached_inv.get("verdict")
+            cached_primary = cached_inv.get("primary_cause")
+            if cached_verdict and cached_primary and isinstance(cached_primary, dict):
+                comparison_regions.append({
+                    "region_id": cached_inv["region_id"],
+                    "verdict": cached_verdict,
+                    "primary_cause_kpi": cached_primary.get("kpi", ""),
+                })
 
         challenge = run_challenge(
             aligned_df,
@@ -346,11 +408,21 @@ def run_investigation(req: InvestigationRequest):
         )
 
     # 15. RAG evidence retrieval
+    _SCENARIO_KEYWORDS = {
+        "multi_factor_pvm": "price marketing seasonal demand elasticity",
+        "operational_disruption": "delay cancellation staffing warehouse",
+        "staffing_chain": "delay cancellation staffing warehouse",
+        "contradiction_promo": "delay cancellation promotion discount",
+        "contradictory_evidence": "delay cancellation promotion discount",
+    }
     rag_result = {"results": []}
     if req.include_rag:
         rag_start = time.perf_counter()
         primary_kpi = root_cause["primary_cause"]["kpi"] if root_cause["primary_cause"] else ""
-        rag_query = f"{primary_kpi} {scenario} delay cancellation staffing"
+        rag_query = (
+            f"{primary_kpi} {scenario} "
+            f"{_SCENARIO_KEYWORDS.get(scenario, '')}"
+        ).strip()
         rag_result = retrieve_evidence(rag_query, region_id=region_id, top_k=5)
         rag_latency = round((time.perf_counter() - rag_start) * 1000, 2)
 
@@ -371,6 +443,7 @@ def run_investigation(req: InvestigationRequest):
         "root_causes": root_cause["root_causes"],
         "primary_cause": root_cause["primary_cause"],
         "causal_chain": root_cause["causal_chain"],
+        "temporal_sequence": root_cause["temporal_sequence"],
         "evidence_summary": root_cause["evidence_summary"],
         "challenge_result": challenge,
         "evidence_graph": evidence_graph,
@@ -422,11 +495,38 @@ def get_investigation(investigation_id: str, persona_id: str = Query(default="gm
     return filter_for_persona(_investigations[investigation_id], persona_id)
 
 
+@app.post("/investigations/{investigation_id}/chat")
+def investigation_chat(investigation_id: str, req: ChatRequest):
+    """Answer a question about a completed investigation (investigation-aware chatbot)."""
+    if investigation_id not in _investigations:
+        raise HTTPException(status_code=404, detail="Investigation not found.")
+
+    # Apply RBAC before passing to the LLM — the chatbot never sees restricted data
+    filtered = filter_for_persona(_investigations[investigation_id], req.persona_id)
+
+    history = [{"role": m.role, "content": m.content} for m in req.history]
+
+    result = chat_with_investigation(
+        investigation=filtered,
+        message=req.message,
+        history=history,
+        persona_id=req.persona_id,
+    )
+    return result
+
+
 @app.post("/sandbox/simulate")
 def sandbox_simulate(req: SandboxRequest):
     """Runs an intervention simulation for a region and lever."""
-    df = _load_region_data(req.region_id)
-    reconciled = reconcile_sources(df)
+    sources = _load_enterprise_sources()
+    reconciled = reconcile_sources(
+        oms_df=sources["oms"],
+        logistics_df=sources["logistics"],
+        wms_df=sources["wms"],
+        support_df=sources["support"],
+        marketing_df=sources["marketing"],
+        region_id=req.region_id,
+    )
     result = simulate_intervention(reconciled["aligned_df"], req.lever, req.lever_value)
     return result
 

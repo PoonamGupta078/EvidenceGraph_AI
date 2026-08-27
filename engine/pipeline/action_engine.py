@@ -97,6 +97,52 @@ ACTION_TEMPLATES = {
             "risks": ["Delay in escalation may miss response window"],
         },
     },
+    "unit_price": {
+        "ACT": {
+            "type": "OPERATIONAL",
+            "title": "Review and Correct Price Change",
+            "description": (
+                "Unit price is identified as a significant PVM contributor "
+                "to the revenue movement. Review the recent price change "
+                "against demand response and segment-level price elasticity. "
+                "Test targeted rebates, bundles, or a partial price rollback "
+                "where supported by the evidence. Monitor volume, realized "
+                "price, and margin after the intervention."
+            ),
+            "owner": "analyst",
+            "priority": "HIGH",
+            "preconditions": [
+                "PVM decomposition confirms a material price contribution",
+                "Price change is verified against source data",
+                "Margin impact is reviewed before intervention",
+            ],
+            "risks": [
+                "Price rollback may reduce realized margin",
+                "Broad discounts may be unnecessary if the effect is segment-specific",
+                "Observed price-volume relationship may not establish causal elasticity",
+            ],
+        },
+        "INVESTIGATE": {
+            "type": "INVESTIGATIVE",
+            "title": "Investigate Price Impact Before Acting",
+            "description": (
+                "Unit price is a material contributor to the revenue movement, "
+                "but the evidence does not yet justify an immediate price intervention. "
+                "Review price changes by segment, examine volume response, and validate "
+                "the PVM contribution before making a commercial decision."
+            ),
+            "owner": "analyst",
+            "priority": "MEDIUM",
+            "preconditions": [
+                "PVM decomposition available",
+                "Price history verified",
+            ],
+            "risks": [
+                "Premature price changes may unnecessarily reduce margin",
+                "Observed correlation may reflect demand or seasonal effects",
+            ],
+        },
+    },
 }
 
 DEFAULT_ABSTAIN_ACTION = {

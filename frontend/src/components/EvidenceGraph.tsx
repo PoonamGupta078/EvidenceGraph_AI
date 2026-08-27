@@ -1,24 +1,8 @@
 "use client";
-// components/EvidenceGraph.tsx
-// react-force-graph-2d visualization of the typed evidence graph
+import React from "react";
 
-import React, { useEffect, useRef, useCallback } from "react";
-
-interface GraphNode {
-  id: string;
-  label: string;
-  material: boolean;
-  centrality: number;
-}
-
-interface GraphLink {
-  source: string;
-  target: string;
-  type: string;
-  weight: number;
-  lag_days: number;
-}
-
+interface GraphNode { id: string; label: string; material: boolean; centrality: number; }
+interface GraphLink { source: string; target: string; type: string; weight: number; lag_days: number; }
 interface Props {
   nodes: GraphNode[];
   links: GraphLink[];
@@ -26,200 +10,89 @@ interface Props {
 }
 
 const EDGE_COLORS: Record<string, string> = {
-  CAUSES: "#6366f1",
-  CORRELATES_WITH: "#0ea5e9",
-  CONTRADICTS: "#ef4444",
-  COMPENSATES: "#f59e0b",
-  LAGS: "#8b5cf6",
-  INDEPENDENT: "#10b981",
+  BUSINESS_RULE_PRIOR: "#7c3aed",
+  CORRELATES_WITH: "#4f46e5",
+  CONTRADICTS: "#e11d48",
+  COMPENSATES: "#d97706",
+  LAGS: "#059669",
+  PVM_CONTRIBUTION: "#c026d3",
+  INDEPENDENT: "#64748b",
 };
 
+const EDGE_LABELS: Record<string, string> = {
+  BUSINESS_RULE_PRIOR: "Prior",
+  CORRELATES_WITH: "Corr.",
+  CONTRADICTS: "Contra.",
+  COMPENSATES: "Comp.",
+  LAGS: "Lag",
+  PVM_CONTRIBUTION: "PVM",
+  INDEPENDENT: "Indep.",
+};
+
+const CHAIN_ORDER = [
+  "warehouse_staffing_level", "fulfillment_delay_rate",
+  "support_ticket_volume", "order_cancellation_rate", "revenue",
+];
+
 export default function EvidenceGraph({ nodes, links, driverRanking }: Props) {
-  const containerRef = useRef<HTMLDivElement>(null);
-  const graphRef = useRef<any>(null);
+  if (!nodes || nodes.length === 0) return null;
 
-  useEffect(() => {
-    if (typeof window === "undefined" || !containerRef.current) return;
-    if (!nodes || nodes.length === 0) return;
-
-    // Dynamically import to avoid SSR issues
-    import("react-force-graph-2d").then((mod) => {
-      const ForceGraph2D = mod.default;
-      // We render via a custom canvas approach since we can't use JSX here directly
-      // The actual render happens through the returned JSX
-    });
-  }, [nodes, links]);
-
-  if (!nodes || nodes.length === 0) {
-    return (
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: 200, color: "var(--text-muted)", fontSize: "0.8rem" }}>
-        No graph data available
-      </div>
-    );
-  }
-
-  return (
-    <div>
-      <GraphCanvas nodes={nodes} links={links} />
-
-      {/* Legend */}
-      <div style={{ display: "flex", flexWrap: "wrap", gap: 12, marginTop: 16 }}>
-        {Object.entries(EDGE_COLORS).map(([type, color]) => (
-          <div key={type} style={{ display: "flex", alignItems: "center", gap: 6 }}>
-            <div style={{ width: 20, height: 2, background: color, borderRadius: 1 }} />
-            <span style={{ fontSize: "0.7rem", color: "var(--text-muted)" }}>{type}</span>
-          </div>
-        ))}
-      </div>
-
-      {/* Driver ranking */}
-      {driverRanking.length > 0 && (
-        <div style={{ marginTop: 20 }}>
-          <h4 style={{ marginBottom: 10 }}>Driver Ranking (Centrality + Correlation)</h4>
-          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-            {driverRanking.slice(0, 5).map((d, i) => (
-              <div key={d.kpi} style={{
-                display: "flex", alignItems: "center", gap: 12,
-                padding: "8px 12px",
-                borderRadius: "var(--radius-sm)",
-                background: d.is_material ? "var(--investigate-bg)" : "var(--bg-elevated)",
-                border: d.is_material ? "1px solid var(--investigate-border)" : "1px solid var(--border)",
-              }}>
-                <span style={{ fontSize: "0.7rem", fontWeight: 700, color: "var(--text-muted)", width: 20 }}>#{i + 1}</span>
-                <span style={{ fontSize: "0.8rem", fontWeight: 600, flex: 1, color: d.is_material ? "var(--investigate)" : "var(--text-primary)" }}>
-                  {d.kpi.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase())}
-                </span>
-                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <div style={{
-                    width: 60, height: 4, borderRadius: 2,
-                    background: "var(--bg-primary)",
-                    overflow: "hidden",
-                  }}>
-                    <div style={{
-                      height: "100%",
-                      width: `${Math.min(100, d.score * 300)}%`,
-                      background: d.is_material ? "var(--investigate)" : "var(--indigo)",
-                      borderRadius: 2,
-                    }} />
-                  </div>
-                  <span style={{ fontSize: "0.7rem", fontFamily: "var(--font-mono)", color: "var(--text-muted)" }}>
-                    {d.score.toFixed(3)}
-                  </span>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-// SVG-based graph canvas (no react-force-graph dependency issues)
-function GraphCanvas({ nodes, links }: { nodes: GraphNode[]; links: GraphLink[] }) {
-  const width = 560;
-  const height = 300;
-  const cx = width / 2;
-  const cy = height / 2;
-
-  // Layout: arrange nodes in a horizontal chain
-  const nodeCount = nodes.length;
-  const positions: Record<string, { x: number; y: number }> = {};
-
-  const CHAIN_ORDER = [
-    "warehouse_staffing_level",
-    "fulfillment_delay_rate",
-    "support_ticket_volume",
-    "order_cancellation_rate",
-    "revenue",
-  ];
-
-  const orderedNodes = [
+  const width = 600, height = 300, cy = height / 2;
+  const ordered = [
     ...CHAIN_ORDER.filter(id => nodes.find(n => n.id === id)),
     ...nodes.filter(n => !CHAIN_ORDER.includes(n.id)).map(n => n.id),
   ];
-
-  orderedNodes.forEach((id, i) => {
-    const x = 80 + (i / Math.max(1, orderedNodes.length - 1)) * (width - 160);
-    const y = cy + (i % 2 === 0 ? -30 : 30);
-    positions[id] = { x, y };
+  const positions: Record<string, { x: number; y: number }> = {};
+  ordered.forEach((id, i) => {
+    positions[id] = {
+      x: 80 + (i / Math.max(1, ordered.length - 1)) * (width - 160),
+      y: cy + (i % 2 === 0 ? -40 : 40),
+    };
   });
 
   return (
-    <div style={{
-      background: "var(--bg-primary)",
-      borderRadius: "var(--radius-md)",
-      border: "1px solid var(--border)",
-      overflow: "hidden",
-    }}>
-      <svg width="100%" viewBox={`0 0 ${width} ${height}`} style={{ display: "block" }}>
-        {/* Links */}
+    <div style={{ padding: 20, background: "#fff", borderRadius: 12, border: "1px solid #e2e8f0" }}>
+      <svg width="100%" viewBox={`0 0 ${width} ${height}`} style={{ overflow: "visible" }}>
         {links.map((link, i) => {
-          const srcPos = positions[link.source] || positions[typeof link.source === "object" ? (link.source as any).id : link.source];
-          const tgtPos = positions[link.target] || positions[typeof link.target === "object" ? (link.target as any).id : link.target];
-          if (!srcPos || !tgtPos) return null;
-          const color = EDGE_COLORS[link.type] || "#6366f1";
-          const mx = (srcPos.x + tgtPos.x) / 2;
-          const my = (srcPos.y + tgtPos.y) / 2 - 20;
+          const s = positions[link.source as string], t = positions[link.target as string];
+          if (!s || !t) return null;
+          const mx = (s.x + t.x) / 2, my = (s.y + t.y) / 2 - 40;
           return (
             <g key={i}>
-              <path
-                d={`M ${srcPos.x} ${srcPos.y} Q ${mx} ${my} ${tgtPos.x} ${tgtPos.y}`}
-                stroke={color}
-                strokeWidth={Math.max(1, link.weight * 3)}
-                fill="none"
-                strokeOpacity={0.7}
-                markerEnd={`url(#arrow-${link.type})`}
-              />
-              <text x={mx} y={my - 4} textAnchor="middle" fontSize={9} fill={color} opacity={0.8}>
-                {link.type}
-                {link.lag_days > 0 ? ` (t-${link.lag_days})` : ""}
-              </text>
+              <path d={`M${s.x},${s.y} Q${mx},${my} ${t.x},${t.y}`}
+                stroke={EDGE_COLORS[link.type] || "#94a3b8"} strokeWidth={2}
+                fill="none" strokeDasharray={link.type === "LAGS" ? "6 4" : "none"}/>
             </g>
           );
         })}
-
-        {/* Arrow markers */}
-        <defs>
-          {Object.entries(EDGE_COLORS).map(([type, color]) => (
-            <marker key={type} id={`arrow-${type}`} markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
-              <path d="M0,0 L0,6 L8,3 z" fill={color} opacity={0.8} />
-            </marker>
-          ))}
-        </defs>
-
-        {/* Nodes */}
-        {nodes.map((node) => {
+        {nodes.map(node => {
           const pos = positions[node.id];
           if (!pos) return null;
-          const isHighCentrality = node.centrality > 0.1;
           return (
             <g key={node.id}>
-              <circle
-                cx={pos.x}
-                cy={pos.y}
-                r={node.material ? 22 : 18}
-                fill={node.material ? "rgba(245,158,11,0.15)" : "rgba(99,102,241,0.12)"}
-                stroke={node.material ? "#f59e0b" : "#6366f1"}
-                strokeWidth={node.material ? 2 : 1.5}
-              />
-              {isHighCentrality && (
-                <circle
-                  cx={pos.x} cy={pos.y}
-                  r={node.material ? 28 : 24}
-                  fill="none"
-                  stroke={node.material ? "rgba(245,158,11,0.2)" : "rgba(99,102,241,0.15)"}
-                  strokeWidth={1}
-                  strokeDasharray="3 3"
-                />
-              )}
-              <text x={pos.x} y={pos.y + 3} textAnchor="middle" fontSize={8} fontWeight="600" fill={node.material ? "#f59e0b" : "#818cf8"}>
+              <circle cx={pos.x} cy={pos.y} r={32} fill={node.material ? "#fef3c7" : "#f1f5f9"} stroke={node.material ? "#d97706" : "#475569"} strokeWidth={3}/>
+              <text x={pos.x} y={pos.y + 5} textAnchor="middle" fontSize={10} fontWeight="bold" fill="#1e293b" style={{ pointerEvents: "none" }}>
                 {node.label.split(" ").slice(0, 2).join(" ")}
               </text>
             </g>
           );
         })}
       </svg>
+
+      <div style={{ marginTop: 24 }}>
+        <h4 style={{ fontSize: 14, fontWeight: 700, color: "#0f172a", marginBottom: 12 }}>Driver Ranking</h4>
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          {driverRanking.slice(0, 5).map((d, i) => (
+            <div key={d.kpi} style={{ display: "flex", alignItems: "center", gap: 12, padding: "8px 0", borderBottom: "1px solid #f1f5f9" }}>
+              <span style={{ fontSize: 12, color: "#64748b", width: 20 }}>#{i + 1}</span>
+              <span style={{ fontSize: 13, fontWeight: 500, color: "#1e293b", flex: 1 }}>{d.kpi.replace(/_/g, " ")}</span>
+              <div style={{ width: 100, height: 6, background: "#e2e8f0", borderRadius: 3, overflow: "hidden" }}>
+                <div style={{ height: "100%", width: `${d.score * 100}%`, background: "#4f46e5" }}/>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
     </div>
   );
 }

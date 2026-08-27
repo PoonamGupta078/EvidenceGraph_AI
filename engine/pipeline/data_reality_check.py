@@ -23,6 +23,16 @@ COLUMNS_PER_SOURCE = {
     "logistics": ["fulfillment_delay_rate"],
     "support": ["support_ticket_volume"],
     "WMS": ["warehouse_staffing_level"],
+    "marketing": ["marketing_spend"],
+}
+
+# Mapping check keys to source_metadata.csv source names
+METADATA_SOURCE_MAP = {
+    "OMS": "OMS",
+    "logistics": "TMS",
+    "support": "Support",
+    "WMS": "WMS",
+    "marketing": "Marketing",
 }
 
 
@@ -44,13 +54,42 @@ def check_data_reality(
         - gate_results: {gate_name: {passed, reason}}
         - abstain_reason: str | None
         - quality_score: float [0, 1]
-        - per_source_flags: {source: {completeness, max_consecutive_gap, flag}}
+        - per_source_flags: {source: {completeness, max_consecutive_gap, freshness, flag}}
     """
+    from pathlib import Path
+    import os
+
     gate_results = {}
     flags = []
 
     # -----------------------------------------------------------------------
-    # Gate 1: Completeness
+    # Load source metadata for freshness check
+    # -----------------------------------------------------------------------
+    metadata_path = Path(__file__).parent.parent / "data" / "generated" / "source_metadata.csv"
+    metadata_map = {}
+    if metadata_path.exists():
+        try:
+            meta_df = pd.read_csv(metadata_path)
+            for _, row in meta_df.iterrows():
+                metadata_map[row["source"]] = {
+                    "last_refresh": row["last_refresh"],
+                    "expected_lag_hours": float(row["expected_lag_hours"]),
+                }
+        except Exception:
+            pass
+
+    # Determine reference time from aligned_df to avoid timezone/clock drift in historical/synthetic data
+    ref_time = None
+    if "date" in df.columns and len(df) > 0:
+        try:
+            max_date = pd.to_datetime(df["date"]).max()
+            # Reference time is the end of the max observed date
+            ref_time = max_date.replace(hour=23, minute=59, second=59)
+        except Exception:
+            pass
+
+    # -----------------------------------------------------------------------
+    # Gate 1: Completeness & Freshness
     # -----------------------------------------------------------------------
     completeness_gate_passed = True
     per_source_flags = {}
@@ -61,20 +100,42 @@ def check_data_reality(
             continue
 
         # Overall completeness for this source
-        completeness = source_completeness.get(source, 1.0)
+        completeness = source_completeness.get(source, 0.0)
 
         # Max consecutive gap
+        source_max_gap = 0
         for col in source_cols:
             series = df[col]
             is_null = series.isna()
-            max_consecutive_gap = 0
+            col_max_gap = 0
             current_gap = 0
             for v in is_null:
                 if v:
                     current_gap += 1
-                    max_consecutive_gap = max(max_consecutive_gap, current_gap)
+                    col_max_gap = max(col_max_gap, current_gap)
                 else:
                     current_gap = 0
+            source_max_gap = max(source_max_gap, col_max_gap)
+            
+        max_consecutive_gap = source_max_gap
+
+        # Freshness Check (independent calculation)
+        freshness = "UNKNOWN"
+        meta_source_name = METADATA_SOURCE_MAP.get(source)
+        if meta_source_name and meta_source_name in metadata_map and ref_time is not None:
+            meta_info = metadata_map[meta_source_name]
+            try:
+                refresh_time = pd.to_datetime(meta_info["last_refresh"]).tz_localize(None)
+                actual_lag_hours = (ref_time - refresh_time).total_seconds() / 3600.0
+                expected_lag = meta_info["expected_lag_hours"]
+                
+                # Check if actual lag exceeds expected lag
+                if actual_lag_hours > expected_lag:
+                    freshness = "STALE"
+                else:
+                    freshness = "FRESH"
+            except Exception:
+                freshness = "ERROR"
 
         flag = "OK"
         if completeness < MIN_COMPLETENESS:
@@ -89,6 +150,7 @@ def check_data_reality(
         per_source_flags[source] = {
             "completeness": round(completeness, 4),
             "max_consecutive_gap": max_consecutive_gap,
+            "freshness": freshness,
             "flag": flag,
         }
 
@@ -106,7 +168,7 @@ def check_data_reality(
         "reason": (
             f"Sufficient history: {total_days} days"
             if history_gate_passed
-            else f"Insufficient history: {total_days} days < {MIN_HISTORY_DAYS}-day minimum required for STL decomposition"
+            else f"Insufficient history: {total_days} days < {MIN_HISTORY_DAYS}-day minimum required for configured seasonal baseline"
         ),
     }
 
@@ -119,7 +181,12 @@ def check_data_reality(
     all_completeness = [v["completeness"] for v in per_source_flags.values()]
     avg_completeness = np.mean(all_completeness) if all_completeness else 1.0
     history_score = min(1.0, total_days / 30)  # full score at 30+ days
-    quality_score = round(0.7 * avg_completeness + 0.3 * history_score, 4)
+    
+    # Introduce small penalty for stale sources to reflect in the quality score
+    stale_count = sum(1 for v in per_source_flags.values() if v["freshness"] == "STALE")
+    freshness_penalty = stale_count * 0.02
+    
+    quality_score = max(0.0, round(0.7 * avg_completeness + 0.3 * history_score - freshness_penalty, 4))
 
     abstain_reason = None
     if not passes:

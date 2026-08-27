@@ -2,36 +2,15 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "EvidenceGraph AI — Autonomous Anomaly Investigation",
+  title: "EvidenceGraph AI | Accenture Innovation Challenge 2026",
   description:
-    "Turn raw KPI divergences into auditable, persona-aware decisions using a typed Evidence Graph, Confidence Gate, and LLM narration.",
-  keywords: "evidence graph, anomaly detection, root cause analysis, business intelligence",
-  openGraph: {
-    title: "EvidenceGraph AI",
-    description: "Autonomous Anomaly Investigation Engine",
-    type: "website",
-  },
+    "Autonomous KPI anomaly investigation engine with typed evidence graph, GNN-powered driver ranking, PVM decomposition, and Confidence Gate verdict — built by Team HerForge.",
+  keywords: "AI, KPI, investigation, evidence graph, GNN, Accenture, business intelligence",
 };
 
-export default function RootLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" suppressHydrationWarning>
-      <head>
-        <link rel="preconnect" href="https://fonts.googleapis.com" />
-        <link
-          rel="preconnect"
-          href="https://fonts.gstatic.com"
-          crossOrigin="anonymous"
-        />
-        <link
-          href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap"
-          rel="stylesheet"
-        />
-      </head>
+    <html lang="en">
       <body>{children}</body>
     </html>
   );

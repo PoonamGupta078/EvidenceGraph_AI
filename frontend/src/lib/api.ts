@@ -55,6 +55,16 @@ export interface InvestigationResult {
     effect_size?: number;
     change_day?: number;
   }>;
+  primary_cause?: {
+    kpi: string;
+    label: string;
+    is_material: boolean;
+    confidence: number;
+    evidence_for: string[];
+    evidence_against: string[];
+    effect_size?: number;
+    change_day?: number;
+  };
   causal_chain?: string[];
   evidence_summary?: { for: string[]; against: string[] };
   challenge_result?: {
@@ -103,6 +113,7 @@ export interface InvestigationResult {
     quality_score: number;
     gate_results: Record<string, { passed: boolean; reason: string }>;
   };
+  raw_sub_scores?: Record<string, number>;
   abstain_reason?: string;
   calendar_check?: {
     is_likely_calendar_artifact: boolean;
@@ -194,4 +205,19 @@ export const api = {
   feedbackStats: () => fetchJSON(`${ENGINE}/feedback/stats`),
 
   telemetry: (investigation_id: string) => fetchJSON(`${ENGINE}/telemetry/${investigation_id}`),
+
+  chat: (
+    investigation_id: string,
+    message: string,
+    persona_id: PersonaId,
+    history: Array<{ role: "user" | "assistant"; content: string }> = []
+  ) =>
+    fetchJSON<{ reply: string; llm_used: boolean; model: string | null; note?: string }>(
+      `${ENGINE}/investigations/${investigation_id}/chat`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message, persona_id, history }),
+      }
+    ),
 };

@@ -17,11 +17,12 @@ from contextlib import contextmanager
 
 DB_PATH = Path(__file__).parent / "telemetry.db"
 
-# Groq pricing (approximate, as of 2024)
+# Model pricing (approximate, as of 2024-2025)
 COST_PER_1K_TOKENS = {
     "llama3-8b-8192": 0.00005,   # $0.05 per 1M tokens
     "llama3-70b-8192": 0.00059,
     "mixtral-8x7b-32768": 0.00024,
+    "gemini-2.5-flash": 0.00015,  # $0.15 per 1M tokens blended
 }
 
 
