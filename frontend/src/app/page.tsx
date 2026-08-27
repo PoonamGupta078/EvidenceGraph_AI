@@ -295,6 +295,14 @@ export default function Home() {
   const [investigationId, setInvestigationId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [engineOnline, setEngineOnline] = useState<boolean | null>(null);
+  const [currentTime, setCurrentTime] = useState<string>("");
+
+  // Live clock ticker
+  useEffect(() => {
+    setCurrentTime(new Date().toLocaleTimeString());
+    const timer = setInterval(() => setCurrentTime(new Date().toLocaleTimeString()), 1000);
+    return () => clearInterval(timer);
+  }, []);
 
   // Health check
   useEffect(() => {
@@ -415,15 +423,16 @@ export default function Home() {
         </div>
         {investigation && !loading && (
           <div style={{ display: "flex", alignItems: "center", gap: 20 }}>
-            <div style={{ display: "flex", gap: 20, fontSize: "0.72rem", color: "var(--text-muted)" }}>
+            <div style={{ display: "flex", gap: 20, fontSize: "0.76rem", color: "var(--text-muted)" }}>
               {[
                 { label: "Region", val: investigation.region_id?.replace(/_/g, " ").toUpperCase() },
                 { label: "Scenario", val: investigation.scenario?.replace(/_/g, " ") },
-                { label: "Time", val: investigation.timestamp ? new Date(investigation.timestamp).toLocaleTimeString() : "—" },
+                { label: "Live Clock", val: currentTime || "—" },
+                { label: "Run Time", val: investigation.timestamp ? new Date(investigation.timestamp).toLocaleTimeString() : "—" },
               ].map(({ label, val }) => (
                 <div key={label}>
-                  <div style={{ fontWeight: 700, color: "var(--text-primary)", marginBottom: 1 }}>{label}</div>
-                  <div style={{ fontFamily: "var(--font-mono)", fontSize: "0.68rem" }}>{val}</div>
+                  <div style={{ fontWeight: 700, color: "var(--text-primary)", marginBottom: 1, fontSize: "0.75rem" }}>{label}</div>
+                  <div style={{ fontFamily: "var(--font-mono)", fontSize: "0.72rem", color: label === "Live Clock" ? "var(--accenture-purple)" : "var(--text-secondary)", fontWeight: 600 }}>{val}</div>
                 </div>
               ))}
             </div>
