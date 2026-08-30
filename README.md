@@ -22,14 +22,7 @@ Quantitative outputs — including anomaly signals, root-cause rankings, confide
 
 ---
 
-## Screenshots
-
-**Region A — Operational Disruption (Verdict: ACT, Confidence: 73%)**
-
-![Region A: Anomaly Investigation Dashboard — ACT verdict, fulfillment delay as primary driver](docs/screenshots/dashboard_region_a.png)
-
-Full dashboard view showing Region A (Pacific NW, Staffing Chain scenario). The investigation identifies fulfillment delay rate as the primary driver through temporal sequencing, graph evidence, and effect sizing. Verdict: ACT with 73% confidence.
-
+## Frontend
 **Region E — Multi-Factor PVM (Verdict: ACT, Confidence: 70%)**
 
 ![Region E: Multi-Factor PVM scenario — ACT verdict, unit price as primary commercial driver](docs/screenshots/dashboard_region_e.png)
@@ -545,9 +538,9 @@ Provides structured feedback storage for analysts to confirm or correct predicte
 
 ---
 
-## 15. Prototype Limitations
+## 15.  Limitations
 
-The following are known limitations of the current prototype:
+The following are known limitations:
 
 - Synthetic scenario datasets, not live enterprise data
 - In-memory investigation storage (restarting the server clears cached investigations)
@@ -604,9 +597,56 @@ python evaluate.py
 
 ## 17. Verification Status
 
-Latest validation run: **5/5 PASS (100% Pass Rate)**.
+### Scenario Pipeline Validation
 
----
+The end-to-end evaluation suite validates the expected decision outcome across five representative scenarios:
+
+| Region | Scenario | Expected Verdict | Actual Verdict | Result |
+|---|---|---|---|---|
+| A | Operational disruption | ACT | ACT | PASS |
+| B | Contradictory evidence | INVESTIGATE | INVESTIGATE | PASS |
+| C | Data-quality failure | ABSTAIN | ABSTAIN | PASS |
+| D | Sparse history | ABSTAIN | ABSTAIN | PASS |
+| E | Multi-factor PVM | ACT | ACT | PASS |
+
+**Scenario validation: 5/5 PASS**
+
+### Targeted Integration Validation
+
+Additional focused checks validated critical integration seams, including:
+
+- Zero-variance `unit_price` step-change detection
+- `change_day` detection for Region E
+- Inclusion of `unit_price` in the temporal sequence
+- Protection against selecting PVM balancing items as `primary_cause`
+- Narrator preference for the validated `primary_cause`
+- Dynamic cached cross-region comparison
+- Scenario-aware PVM causal-chain confidence logic
+- Scenario-aware RAG query construction
+
+**Targeted validation: 9/9 PASS**
+
+### Overall
+
+The prototype was validated across both end-to-end scenarios and critical integration seams.
+
+**5/5 scenario tests passed**  
+**9/9 targeted integration checks passed**
+
+## 18. Limitations
+
+EvidenceGraph AI is currently a hackathon prototype and uses synthetic scenario data.
+
+Current prototype limitations include:
+
+- Scenario datasets rather than live enterprise data connectors
+- Prototype-scale in-memory investigation state
+- Lightweight retrieval corpus rather than a production vector database
+- Limited historical scenarios for intervention modeling
+- Persona switching implemented for prototype demonstration rather than full enterprise identity authentication
+- Confidence weights that are configurable defaults and would require calibration using real analyst feedback
+
+These limitations are intentionally separated from the implemented functionality and define the production roadmap.
 
 ## 19. Security and Governance
 
@@ -620,21 +660,47 @@ Latest validation run: **5/5 PASS (100% Pass Rate)**.
 
 ## 20. Future Production Roadmap
 
-The following are planned extensions for a production deployment:
+### Phase 1 — Enterprise Data Integration
 
-- Real enterprise data connectors (ERP, OMS, WMS, CRM, data warehouses)
-- Real-time event ingestion via Kafka or Google Cloud Pub/Sub
-- Persistent investigation storage (PostgreSQL or equivalent)
-- Production vector database for retrieval (Milvus, Pinecone, or pgvector)
-- Asynchronous investigation workers
-- Formal causal inference methods (DoWhy, EconML, Double Machine Learning)
-- Multi-lever counterfactual simulation
-- Multi-agent investigation architecture (Data Agent, Causal Agent, Verifier Agent)
-- Feedback-based confidence recalibration
+- Connect ERP, OMS, WMS, CRM and data warehouse sources
+- Introduce automated schema validation and data contracts
+- Replace local scenario datasets with governed enterprise data pipelines
+- Add freshness, completeness and lineage monitoring
+
+### Phase 2 — Scale the Investigation Engine
+
+- Real-time event ingestion through Kafka or Google Cloud Pub/Sub
+- Asynchronous investigation workers for computationally heavy analysis
+- Persistent investigation storage using PostgreSQL or equivalent
+- Partitioned processing by region, product, warehouse or business unit
+- Horizontal API scaling and load balancing
+- Durable evidence snapshots and audit records
+
+### Phase 3 — Scale the Intelligence Layer
+
+- Production graph storage and scheduled graph refresh
+- Production vector retrieval using Milvus, Pinecone or pgvector
+- Formal causal inference using DoWhy, EconML or Double Machine Learning
+- Multi-lever counterfactual simulations
+- Feedback-driven calibration of confidence and evidence weights
+
+### Phase 4 — Scale the Enterprise Product
+
 - Enterprise authentication and session management
-- Horizontal scaling and load balancing
+- Fine-grained role-based authorization
+- Recommendation and intervention audit trails
+- Workflow integrations and alerting
+- SLA monitoring for API latency, model latency, LLM availability and cost
 
----
+### Phase 5 — Advanced AI Agents
+
+- Data Agent for governed analytical queries
+- Causal Agent for complex multi-lever simulations
+- Verifier Agent for checking contradictions and unsupported claims
+
+The production roadmap preserves the same core principle as the prototype:
+
+> **Scale the infrastructure without sacrificing evidence traceability.**
 
 ## 21. Key Design Principles
 
@@ -648,26 +714,8 @@ The following are planned extensions for a production deployment:
 
 ---
 
-## 22. Hackathon Demonstration Flow
 
-```text
-1. Open Decision Workspace
-2. Select Region A -> ACT verdict -> explain operational chain
-3. Show Evidence Graph (typed relationship graph, temporal sequencing)
-4. Show Confidence breakdown (sub-scores)
-5. Show Challenge Engine
-6. Open Intervention Sandbox (staffing lever)
-7. Ask Investigation Assistant: "Why did revenue decrease?"
-8. Switch persona (GM to Ops Lead) -> financial data hidden
-9. Open Region B -> INVESTIGATE -> show contradiction detection
-10. Open Region C / D -> ABSTAIN -> show data quality / history gates
-11. Open Region E -> ACT -> show PVM decomposition -> Unit Price primary driver
-12. Finish with ACT / INVESTIGATE / ABSTAIN decision story
-```
-
----
-
-## 23. Final Takeaway
+## 22. Final Takeaway
 
 When a critical business KPI moves, EvidenceGraph AI investigates the reason, challenges its own explanation, quantifies uncertainty, and helps the business decide what to do next.
 
@@ -703,7 +751,7 @@ Detect. Explain. Challenge. Decide. Act.
 
 ---
 
-## 18. Team & License
+### Team
 
 * **Team**: HerForge
 * **Competition**: Accenture Innovation Challenge 2026 · Round 2 · Track 3: BusinessIntelligence.ai
