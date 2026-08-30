@@ -21,6 +21,7 @@ The system follows one core principle:
 Quantitative outputs — including anomaly signals, root-cause rankings, confidence scores, PVM contributions, and verdicts — are produced by deterministic backend logic. The LLM is used only for grounded, persona-aware explanation and conversational follow-up.
 
 ---
+## DEMO Prototype link:- https://www.youtube.com/watch?v=VG14bFVGD5Q
 
 ## Frontend
 **Region E — Multi-Factor PVM (Verdict: ACT, Confidence: 70%)**
