@@ -604,50 +604,7 @@ python evaluate.py
 
 ## 17. Verification Status
 
-Latest validated run: **5 PASS / 0 FAIL (100%)**
-
-| Region | Scenario | Final Verdict | Driver Match | Result |
-|---|---|---|---|---|
-| A | Operational disruption | ACT | fulfillment_delay_rate | PASS |
-| B | Contradictory evidence | INVESTIGATE | marketing_spend (causal chain node) | PASS |
-| C | Data-quality failure | ABSTAIN | N/A (gate) | PASS |
-| D | Sparse history | ABSTAIN | N/A (gate) | PASS |
-| E | Multi-factor PVM | ACT | unit_price | PASS |
-
----
-
-## 18. API Architecture
-
-```text
-Frontend
-   |
-   | HTTP / JSON
-   v
-FastAPI
-   |
-   v
-Investigation Pipeline
-   |
-   +-- Reconciliation
-   +-- Data Reality
-   +-- Materiality
-   +-- Evidence Graph
-   +-- Root Cause
-   +-- Challenge
-   +-- Confidence
-   +-- Action
-   +-- Intervention
-   +-- RAG
-   +-- LLM
-   |
-   v
-Structured Investigation Result
-   |
-   v
-Frontend (dynamic renderer)
-```
-
-The frontend renders backend data. It does not compute analytical results independently.
+Latest validation run: **5/5 PASS (100% Pass Rate)**.
 
 ---
 
@@ -746,21 +703,7 @@ Detect. Explain. Challenge. Decide. Act.
 
 ---
 
-## 24. Screenshots Reference
+## 18. Team & License
 
-All screenshots were captured from a locally running instance of the system:
-- Backend: FastAPI on `http://localhost:8000`
-- Frontend: Next.js on `http://localhost:3000`
-- Investigation engine: evaluation suite at 5/5 PASS
-
-See `docs/screenshots/` in the repository for the full set of validated screenshots.
-
----
-
-## 25. Team and License
-
-**Team**: HerForge
-
-**Competition**: Accenture Innovation Challenge 2026 · Round 2 · Track 3: BusinessIntelligence.ai
-
-This project was developed as a hackathon prototype. Refer to the repository for applicable project and competition terms.
+* **Team**: HerForge
+* **Competition**: Accenture Innovation Challenge 2026 · Round 2 · Track 3: BusinessIntelligence.ai
