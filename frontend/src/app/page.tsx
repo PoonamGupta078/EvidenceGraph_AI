@@ -55,7 +55,7 @@ function LoadingOverlay() {
   const stages = [
     "Reconciling data sources…",
     "Detecting anomalies (CUSUM + STL)…",
-    "Building evidence graph (GNN)…",
+    "Building typed relationship graph…",
     "Running PVM decomposition…",
     "Computing confidence gate…",
     "Generating narrative…",
@@ -511,7 +511,6 @@ export default function Home() {
                       )}
                       {investigation.persona_context && (
                         <span className="chip chip-purple">
-                          {investigation.persona_context.persona_id === "gm" ? "👔" : investigation.persona_context.persona_id === "ops_lead" ? "⚙️" : "📊"}{" "}
                           {investigation.persona_context.label}
                         </span>
                       )}
@@ -563,7 +562,7 @@ export default function Home() {
                         borderRadius: "0 8px 8px 0",
                         fontSize: "0.78rem", color: "var(--text-secondary)",
                       }}>
-                        <span style={{ fontWeight: 700, color: "#818cf8" }}>📅 Calendar Effect: </span>
+                        <span style={{ fontWeight: 700, color: "#818cf8" }}>Calendar Effect: </span>
                         {investigation.calendar_check.recommendation}
                       </div>
                     )}
@@ -587,7 +586,7 @@ export default function Home() {
                   <div className="card">
                     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
                       <h3>Evidence Graph</h3>
-                      <span className="chip chip-purple">GNN · GraphSAGE</span>
+                      <span className="chip chip-purple">Typed Relationship Graph</span>
                     </div>
                     <EvidenceGraph
                       nodes={investigation.evidence_graph.nodes}
@@ -667,7 +666,7 @@ export default function Home() {
 
               {/* ── Intervention Sandbox — visible for all non-ABSTAIN investigations ── */}
               {investigation.verdict !== "ABSTAIN" && (
-                <InterventionSandbox regionId={investigation.region_id}/>
+                <InterventionSandbox regionId={investigation.region_id} scenario={investigation.scenario} />
               )}
 
 

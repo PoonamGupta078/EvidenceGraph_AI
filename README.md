@@ -22,6 +22,28 @@ Quantitative outputs — including anomaly signals, root-cause rankings, confide
 
 ---
 
+## Screenshots
+
+**Region A — Operational Disruption (Verdict: ACT, Confidence: 73%)**
+
+![Region A: Anomaly Investigation Dashboard — ACT verdict, fulfillment delay as primary driver](docs/screenshots/dashboard_region_a.png)
+
+Full dashboard view showing Region A (Pacific NW, Staffing Chain scenario). The investigation identifies fulfillment delay rate as the primary driver through temporal sequencing, graph evidence, and effect sizing. Verdict: ACT with 73% confidence.
+
+**Region E — Multi-Factor PVM (Verdict: ACT, Confidence: 70%)**
+
+![Region E: Multi-Factor PVM scenario — ACT verdict, unit price as primary commercial driver](docs/screenshots/dashboard_region_e.png)
+
+Region E (Southeast, Multi-Factor PVM scenario). Operational KPIs are healthy. PVM decomposition identifies unit price as the primary commercial driver through zero-variance step-change detection. Verdict: ACT with 70% confidence.
+
+**Investigation Assistant (Region B — Chatbot)**
+
+![Investigation Assistant chatbot answering a question about Region B with grounded context](docs/screenshots/dashboard_chatbot.png)
+
+The Investigation Assistant answers user questions grounded in backend-computed investigation context. The LLM does not compute numbers — it explains results returned by the analytical engine.
+
+---
+
 ## 1. Overview
 
 Traditional dashboards answer:
@@ -724,7 +746,18 @@ Detect. Explain. Challenge. Decide. Act.
 
 ---
 
-## 24. Team and License
+## 24. Screenshots Reference
+
+All screenshots were captured from a locally running instance of the system:
+- Backend: FastAPI on `http://localhost:8000`
+- Frontend: Next.js on `http://localhost:3000`
+- Investigation engine: evaluation suite at 5/5 PASS
+
+See `docs/screenshots/` in the repository for the full set of validated screenshots.
+
+---
+
+## 25. Team and License
 
 **Team**: HerForge
 
