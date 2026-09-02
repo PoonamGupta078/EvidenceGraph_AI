@@ -1,14 +1,11 @@
 """
 generate_synthetic.py
+
 Generates 90-day synthetic relational database tables for all regions/scenarios.
 Produces transactional OMS, logistics shipments, WMS logs, and support tickets.
 
-Tables generated in data/generated/:
-  - oms.csv: order-level transaction details
-  - logistics.csv: shipment-level transit logs
-  - wms.csv: daily warehouse staffing and capacity metrics
-  - support.csv: ticket-level customer issues
-  - marketing.csv: daily marketing spend per region
+Tables written to data/generated/:
+  oms.csv, logistics.csv, wms.csv, support.csv, marketing.csv
 
 Usage:
     python data/generate_synthetic.py
@@ -46,16 +43,13 @@ def generate_relational_data():
     all_dates = date_range(90)
     n_days = len(all_dates)
 
-
     oms_records = []
     logistics_records = []
     wms_records = []
     support_records = []
     marketing_records = []
 
- 
     regions = ["region_a", "region_b", "region_c", "region_d", "region_e"]
-    
 
     daily_vars = {r: {
         "staffing": np.zeros(n_days),
@@ -64,14 +58,14 @@ def generate_relational_data():
         "cancel_prob": np.zeros(n_days),
     } for r in regions}
 
+    # Pre-compute daily operational probabilities for each region.
+    # Region D starts at day 79 (11-day sparse history scenario).
     for r in regions:
-      
         start_idx = 79 if r == "region_d" else 0
 
         for d in range(start_idx, n_days):
-            # 1. Staffing Level
             if r == "region_a":
-                staff = 95.0 if d < 45 else 68.0
+                staff = 95.0 if d < 45 else 68.0   # staffing drops 28% at day 45
             elif r == "region_b":
                 staff = 93.0 if d < 45 else 66.0
             elif r == "region_c":
@@ -80,49 +74,34 @@ def generate_relational_data():
                 staff = 85.0
             else:
                 staff = 92.0
-            
+
             staff_noise = np.random.normal(0, 1.5)
             daily_vars[r]["staffing"][d] = max(50, min(100, staff + staff_noise))
 
-          
-            staff_lag_idx = max(start_idx, d - 2)
-            staff_lag = daily_vars[r]["staffing"][staff_lag_idx]
-            
+            staff_lag = daily_vars[r]["staffing"][max(start_idx, d - 2)]
             if r in ["region_a", "region_b"]:
                 base_delay = 0.08 + (95.0 - staff_lag) * 0.007
             else:
                 base_delay = 0.09
-            
             daily_vars[r]["delay_prob"][d] = max(0.02, min(0.85, base_delay + np.random.normal(0, 0.02)))
 
-            delay_lag_idx = max(start_idx, d - 1)
-            delay_lag = daily_vars[r]["delay_prob"][delay_lag_idx]
-            
+            delay_lag = daily_vars[r]["delay_prob"][max(start_idx, d - 1)]
             if r in ["region_a", "region_b"]:
                 ticket_p = 0.05 + delay_lag * 0.4
             else:
                 ticket_p = 0.06
-            
             daily_vars[r]["ticket_prob"][d] = max(0.02, min(0.9, ticket_p + np.random.normal(0, 0.02)))
 
-            # 4. Cancellation Probability (lags ticket by 1 day)
-            ticket_lag_idx = max(start_idx, d - 1)
-            ticket_lag = daily_vars[r]["ticket_prob"][ticket_lag_idx]
-            
+            ticket_lag = daily_vars[r]["ticket_prob"][max(start_idx, d - 1)]
             if r in ["region_a", "region_b"]:
                 cancel_p = 0.02 + ticket_lag * 0.35
             else:
                 cancel_p = 0.03
-            
             daily_vars[r]["cancel_prob"][d] = max(0.01, min(0.6, cancel_p + np.random.normal(0, 0.01)))
 
-  
     order_counter = 100000
     shipment_counter = 500000
     ticket_counter = 900000
-
-
-    # Day-by-Day Transaction Generator
 
     for d_idx, date in enumerate(all_dates):
         date_str = date.strftime("%Y-%m-%d")
@@ -135,40 +114,35 @@ def generate_relational_data():
 
             mkt_spend = 1000.0
             if r == "region_e":
-                mkt_spend = 5000.0 if d_idx < 40 else 2000.0
+                mkt_spend = 5000.0 if d_idx < 40 else 2000.0   # marketing cut at day 40
             elif r == "region_b":
-                mkt_spend = 2500.0  
-            
+                mkt_spend = 2500.0
+
             mkt_spend = max(0.0, mkt_spend + np.random.normal(0, 100))
-            
-           
+
             base_orders = 80
-            price = 450.0  # Base unit price
+            price = 450.0
             discount = 0.0
             seasonal_index = 1.0
 
             if r == "region_e":
-                price = 500.0 if d_idx < 30 else 560.0
-                
+                price = 500.0 if d_idx < 30 else 560.0   # price increase at day 30
                 mkt_factor = 1.0 if d_idx < 40 else 0.9
-                
+
                 if 55 <= d_idx <= 70:
-                    seasonal_index = 0.9
-                
+                    seasonal_index = 0.9   # seasonal dip days 55-70
+
                 price_pct = (price - 500.0) / 500.0
-                price_factor = 1.0 - 1.5 * price_pct  
-                
+                price_factor = 1.0 - 1.5 * price_pct   # price elasticity
+
                 vol_target = base_orders * price_factor * mkt_factor * seasonal_index
                 n_orders = int(np.random.poisson(vol_target))
             else:
-                # Normal demand
                 n_orders = int(np.random.poisson(base_orders))
-                
-                # Region B promo discount after Day 47
-                if r == "region_b" and d_idx >= 47:
-                    discount = 0.15 # 15% promo discount
 
-           
+                if r == "region_b" and d_idx >= 47:
+                    discount = 0.15   # 15% promo launched at day 47
+
             marketing_records.append({
                 "date": date_str,
                 "region_id": r,
@@ -177,23 +151,19 @@ def generate_relational_data():
                 "campaign_id": f"CAMP-{r.upper()}-{date.strftime('%y%m%d')}"
             })
 
-            
             for _ in range(n_orders):
                 order_counter += 1
                 shipment_counter += 1
-                
+
                 order_id = f"ORD-{order_counter}"
                 shipment_id = f"SHP-{shipment_counter}"
                 cust_id = np.random.choice(CUSTOMERS)
                 prod_id = np.random.choice(PRODUCTS)
-                
                 qty = int(np.random.choice([1, 2, 3], p=[0.7, 0.2, 0.1]))
-                
-                # Cancellation logic
+
                 cancel_prob = daily_vars[r]["cancel_prob"][d_idx]
                 is_cancelled = np.random.random() < cancel_prob
-                
-                # Write OMS
+
                 oms_records.append({
                     "order_id": order_id,
                     "customer_id": cust_id,
@@ -207,21 +177,18 @@ def generate_relational_data():
                     "cancelled": 1 if is_cancelled else 0,
                 })
 
-               
-                # Region C data-drop scenario: drop shipments completely between days 30-50
+                # Region C: logistics records are absent for days 30-50 (TMS outage scenario).
                 is_region_c_drop = (r == "region_c" and 30 <= d_idx <= 50)
-                
+
                 if not is_region_c_drop:
                     delay_prob = daily_vars[r]["delay_prob"][d_idx]
                     is_delayed = np.random.random() < delay_prob
-                    
                     promised_dt = date + pd.Timedelta(days=3)
-                    
-                    if is_delayed:
-                        actual_dt = promised_dt + pd.Timedelta(days=int(np.random.randint(1, 6)))
-                    else:
-                        actual_dt = promised_dt + pd.Timedelta(days=int(np.random.choice([-1, 0])))
-
+                    actual_dt = (
+                        promised_dt + pd.Timedelta(days=int(np.random.randint(1, 6)))
+                        if is_delayed
+                        else promised_dt + pd.Timedelta(days=int(np.random.choice([-1, 0])))
+                    )
                     logistics_records.append({
                         "shipment_id": shipment_id,
                         "order_id": order_id,
@@ -231,16 +198,14 @@ def generate_relational_data():
                         "actual_delivery_date": actual_dt.strftime("%Y-%m-%d")
                     })
 
-                # Write Support Tickets
                 ticket_prob = daily_vars[r]["ticket_prob"][d_idx]
                 if np.random.random() < ticket_prob:
                     ticket_counter += 1
                     t_id = f"TCK-{ticket_counter}"
-                    
-                
+
                     sentiment = 0.5 + np.random.normal(0, 0.15)
                     issue = "general_inquiry"
-                    
+
                     if is_cancelled:
                         issue = "cancellation"
                         sentiment = 0.1 + np.random.normal(0, 0.08)
@@ -264,10 +229,8 @@ def generate_relational_data():
                         "sentiment": round(max(0.0, min(1.0, sentiment)), 2)
                     })
 
-           
             staff_level = daily_vars[r]["staffing"][d_idx]
             stockout = 1 if (staff_level < 75.0 and np.random.random() < 0.15) else 0
-
 
             for prod in PRODUCTS[:25]:
                 wms_records.append({
@@ -280,7 +243,6 @@ def generate_relational_data():
                     "stockout": stockout
                 })
 
-  
     df_oms = pd.DataFrame(oms_records)
     df_oms.to_csv(OUT_DIR / "oms.csv", index=False)
     print(f"[OK] OMS: {len(df_oms)} orders saved to {OUT_DIR / 'oms.csv'}")
@@ -301,9 +263,7 @@ def generate_relational_data():
     df_marketing.to_csv(OUT_DIR / "marketing.csv", index=False)
     print(f"[OK] Marketing: {len(df_marketing)} records saved to {OUT_DIR / 'marketing.csv'}")
 
-    # Build RAG corpus directly from generated support records (for evidence lineage)
     generate_rag_corpus_from_support(df_support, df_logistics)
-  
     generate_source_metadata()
     generate_scenario_metadata()
 
@@ -338,9 +298,9 @@ ISSUE_TEXT_TEMPLATES = {
 
 def generate_rag_corpus_from_support(df_support: pd.DataFrame, df_logistics: pd.DataFrame):
     """
-    Builds support_tickets.csv (the RAG retrieval corpus) directly from
-    the generated support.csv records. Every corpus document is traceable
-    back to a real generated support ticket via ticket_id and order_id.
+    Builds support_tickets.csv (the RAG retrieval corpus) directly from generated
+    support.csv records. Every document is traceable back to a real ticket via
+    ticket_id and order_id.
     """
     corpus_records = []
     logistics_lookup = df_logistics.set_index("order_id") if "order_id" in df_logistics.columns else None
@@ -348,10 +308,8 @@ def generate_rag_corpus_from_support(df_support: pd.DataFrame, df_logistics: pd.
     for _, row in df_support.iterrows():
         issue = row.get("issue_type", "general_inquiry")
         templates = ISSUE_TEXT_TEMPLATES.get(issue, ISSUE_TEXT_TEMPLATES["general_inquiry"])
-        
-        template_idx = sum(ord(c) for c in str(row["ticket_id"])) % len(templates)
-        template = templates[template_idx]
-        
+        template = templates[sum(ord(c) for c in str(row["ticket_id"])) % len(templates)]
+
         days_late = 0
         if "delay" in issue and logistics_lookup is not None:
             order_id = row["order_id"]
@@ -367,15 +325,10 @@ def generate_rag_corpus_from_support(df_support: pd.DataFrame, df_logistics: pd.
                 except Exception:
                     pass
         if days_late == 0 and "delay" in issue:
-            days_late = 5  # fallback
-            
-        text = template.format(
-            cid=row["customer_id"],
-            oid=row["order_id"],
-            days=days_late,
-        )
+            days_late = 5
+
+        text = template.format(cid=row["customer_id"], oid=row["order_id"], days=days_late)
         corpus_records.append({
-         
             "id": row["ticket_id"],
             "source": "SUPPORT",
             "source_id": row["ticket_id"],
@@ -396,10 +349,9 @@ def generate_source_metadata():
     """
     Produces source_metadata.csv: formal registration of each enterprise source.
     The data_reality_check engine reads this to evaluate freshness and cadence.
-    This is NOT ground truth — it describes source structure, not scenario outcomes.
     """
     import json
-  
+
     LAST_REFRESH_BASE = "2024-03-31"
     sources = [
         {
@@ -470,13 +422,11 @@ def generate_source_metadata():
 
 def generate_scenario_metadata():
     """
-    Produces scenario_metadata.json: formal record of ground truth per region.
+    Produces scenario_metadata.json: ground truth per region for evaluate.py and the demo UI.
 
-    IMPORTANT: This file is used ONLY by:
-      - evaluate.py (test harness)
-      - Demo scenario selector (UI)
-    It is NEVER loaded by the intelligence pipeline (main.py, reconciliation, confidence gate).
-    The pipeline must independently discover the verdict from raw source data.
+    This file is used ONLY by evaluate.py (test harness) and the scenario selector.
+    It is never loaded by the intelligence pipeline — the pipeline must discover
+    its verdict independently from raw source data.
     """
     import json
     metadata = {
@@ -546,7 +496,7 @@ def generate_scenario_metadata():
     with open(out_path, "w") as f:
         json.dump(metadata, f, indent=2)
     print(f"[OK] Scenario metadata (evaluation-only): {len(metadata)} regions -> {out_path}")
-    print("     NOTE: scenario_metadata.json is for evaluate.py / demo only. NEVER loaded by the pipeline.")
+    print("     NOTE: scenario_metadata.json is for evaluate.py / demo only. Never loaded by the pipeline.")
 
 
 if __name__ == "__main__":
